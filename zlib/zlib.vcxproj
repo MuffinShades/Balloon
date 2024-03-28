@@ -132,10 +132,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="baloon.cpp" />
+    <ClCompile Include="balloon.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="baloon.hpp" />
+    <ClInclude Include="balloon.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
