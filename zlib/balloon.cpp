@@ -667,9 +667,44 @@ const int compression_table[10][5] = {
  /* 9 */ {32, 258, 258, 4096}    /* max compression */
 };
 
+//from https://www.geeksforgeeks.org/rabin-karp-algorithm-for-pattern-searching/
 //q is the big ol prime number
-RawBytes searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, i32 q) {
+std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, const i32 q, const i32 alphabetSz) {
+	i32 pHash = 0, bHash = 0, i, j, h = 1, szDiff = bufSz - qSz;
+	
+	for (i = 0; i < qSz - 1; i++)
+		h = (h * alphabetSz) % q;
 
+	//computer first hashes
+	for (i = 0; i < qSz; i++) {
+		pHash = (pHash * alphabetSz + query[i]) % q;
+		bHash = (bHash * alphabetSz + buf[i]) % q;
+	}
+
+	std::vector<i32> matches;
+
+	//now search
+	for (i = 0; i <= szDiff; i++) {
+		if (pHash == bHash) {
+			for (j = 0; j < qSz; j++) {
+				if (buf[i + j] != query[j])
+					break;
+			}
+
+			if (j == qSz)
+				matches.push_back(i);
+		}
+
+		//
+		if (i < szDiff) {
+			bHash = (alphabetSz * (bHash - buf[i] * h) + buf[i + qSz]) % q;
+
+			if (bHash < 0) bHash += q;
+		}
+	}
+
+	//return le matches
+	return matches;
 }
 
 //shift window to the left by 1
@@ -690,7 +725,11 @@ void ShiftWindow(char* win, size_t winSz, i32 amount) {
  *
  */
 
-RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096) {
+#include <string>
+
+#define LZ77_TESTING
+
+std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096) {
 	lookAheadSz = MIN(len, lookAheadSz);
 
 	//restult bytes
@@ -710,26 +749,54 @@ RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz 
 	for (i32 i = 0; i < lookAheadSz; i++)
 		window[winSz] = bytes[bPos++];
 
+	//found matches
+	std::vector<i32> matches, lmatches;
+
 	//parse everything
 	while (bPos < len + lookAheadSz) {
 		//search for match
 		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
 
 		do {
-			RawBytes r = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX);
+			//search for a match
+			lmatches = matches;
+			matches = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX, 256);
 
-			if (r.len <= 0)
+			//look for le match
+			if (matches.size() <= 0) {
+				matches = lmatches;
 				break;
+			}
 
+			//set new best match if one is found
 			bestMatch = matchLength;
+
 		} while (matchLength++);
 
 		//determine whether or not there is a back reference
-		if (matchLength >= LZ77_MIN_MATCH) {
+		if (bestMatch >= LZ77_MIN_MATCH && matches.size() > 0) {
+			i32 match = matches[0],
+				dist = readPos - match,
+				len = bestMatch;
 
+			//now encode match
+
+#ifdef LZ77_TESTING
+			std::string dStr = std::to_string(dist), lStr = std::to_string(len);
+
+			res.push_back('<');
+			for (i32 i = 0; i < dStr.length(); i++)
+				res.push_back(dStr[i]);
+			res.push_back(',');
+			for (i32 i = 0; i < lStr.length(); i++)
+				res.push_back(lStr[i]);
+			res.push_back('>');
+#else
+
+#endif
 		}
+		//just add current character if no match is found
 		else
-			//just add current character
 			res.push_back(window[readPos]);
 
 
@@ -740,6 +807,9 @@ RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz 
 		if (bPos < len)
 			window[winSz - 1] = bytes[bPos];
 	}
+
+	//return le result
+	return res;
 }
 
 /**
@@ -853,4 +923,19 @@ void Huffman::DebugMain() {
 	//ZResult testRes2 = z.Inflate((u32*)out, sz);
 
 	//std::cout << "Test Result 2: " << testRes2.bytes << std::endl;
+
+	//back reference testing
+	char testStr[] = "abracadabrabababababababababababababababababanana";
+	u32 *uTestStr = new u32[49];
+
+	for (i32 i = 0; i < 49; i++)
+		uTestStr[i] = (u32)testStr[i];
+
+	std::vector<u32> lz77testRes = lz77_encode(uTestStr, 49);
+
+	for (int i = 0; i < lz77testRes.size(); i++) {
+		std::cout << (char)lz77testRes[i];
+	}
+
+	std::cout << std::endl;
 }
