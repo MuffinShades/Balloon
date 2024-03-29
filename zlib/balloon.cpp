@@ -681,17 +681,20 @@ const int compression_table[10][5] = {
 };
 
 //q is the big ol prime number
-RawBytes searchStr(char* str, char* query, i32 q) {
+RawBytes searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, i32 q) {
 
 }
 
 //shift window to the left by 1
-void ShiftWindow(char* win, size_t winSz) {
-
+void ShiftWindow(char* win, size_t winSz, i32 amount) {
+	memcpy(win, win + amount, winSz - amount);
 }
 
 RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096) {
 	lookAheadSz = MIN(len, lookAheadSz);
+
+	//restult bytes
+	std::vector<u32> res;
 
 	//constants and some vars
 	const i32 winSz = lookAheadSz + storeSz;
@@ -708,12 +711,35 @@ RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz 
 		window[winSz] = bytes[bPos++];
 
 	//parse everything
-	do {
+	while (bPos < len + lookAheadSz) {
+		//search for match
+		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
+
+		do {
+			RawBytes r = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX);
+
+			if (r.len <= 0)
+				break;
+
+			bestMatch = matchLength;
+		} while (matchLength++);
+
+		//determine whether or not there is a back reference
+		if (matchLength >= LZ77_MIN_MATCH) {
+
+		}
+		else
+			//just add current character
+			res.push_back(window[readPos]);
 
 
 		//shift look window
-		ShiftWindow(window, winSz);
-	} while (bPos < len + lookAheadSz);
+		ShiftWindow(window, winSz, 1);
+		bPos++;
+		//add new char to le window
+		if (bPos < len)
+			window[winSz - 1] = bytes[bPos];
+	}
 }
 
 /**
