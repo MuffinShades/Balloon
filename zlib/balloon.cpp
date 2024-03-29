@@ -650,19 +650,6 @@ HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSi
 	return cTree;
 }
 
-/**
- * 
- * LZ77 Encode
- * 
- * This function is for the LZ77 step of the DEFLATE algorith.
- * This function takes in a pointer to some memory that contains
- * the bytes to be compressed along with the size of the memory
- * location and specificaiton such as the sliding window size
- * 
- * This function is called during Zlib::Deflate
- * 
- */
-
 #define LZ77_MIN_MATCH 3 // min match size for back reference
 #define LZ77_MAX_MATCH 256
 
@@ -689,6 +676,19 @@ RawBytes searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, i32 q) {
 void ShiftWindow(char* win, size_t winSz, i32 amount) {
 	memcpy(win, win + amount, winSz - amount);
 }
+
+/**
+ *
+ * LZ77 Encode
+ *
+ * This function is for the LZ77 step of the DEFLATE algorith.
+ * This function takes in a pointer to some memory that contains
+ * the bytes to be compressed along with the size of the memory
+ * location and specificaiton such as the sliding window size
+ *
+ * This function is called during Zlib::Deflate
+ *
+ */
 
 RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096) {
 	lookAheadSz = MIN(len, lookAheadSz);
