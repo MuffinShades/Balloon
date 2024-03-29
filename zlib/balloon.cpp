@@ -568,6 +568,24 @@ HuffmanTreeNode* GenerateBaseTree(u32* _charCount, size_t alphabetSize) {
 	return root;
 }
 
+/**
+ * 
+ * getTreeBitLens
+ * 
+ * Get the bit lengths of each symbol in a huffman tree give
+ * the tree. 
+ *
+ * This function calls itself recursivley
+ * 
+ * Params: 
+ * 
+ *	tree -> a pointer to the root node in a huffman tree
+ *	alphabetSize -> number of characters that the tree can hold (normally 288)
+ * 
+ *  currentLen and cbl should not be set
+ *
+ */
+
 u32* getTreeBitLens(HuffmanTreeNode* tree, size_t alphabetSize, i32 currentLen = 0, u32* cbl = nullptr) {
 	if (!cbl) {
 		cbl = new u32[alphabetSize];
@@ -584,11 +602,23 @@ u32* getTreeBitLens(HuffmanTreeNode* tree, size_t alphabetSize, i32 currentLen =
 
 	return cbl;
 }
+/*
+
+Function to convert a huffman tree into a canonical huffman tree
+via BitLengthsToHTree
+
+Params:
+
+	tree -> pointer to root node of a Huffman tree
+	alphabetSize -> number of characters that the tree can hold (normally 288)
+
+*/
 
 HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSize) {
 	//get bit lengths of each code
 	u32* bitLens = getTreeBitLens(tree, alphabetSize);
 
+#ifdef BALLOON_DEBUG
 	std::cout << "BitLen: ";
 	for (int i = 0; i < alphabetSize; i++)
 		if (bitLens[i] > 0) std::cout << bitLens[i];
@@ -608,6 +638,7 @@ HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSi
 		if (bitLens[i] > 0) std::cout << "BitLen: " << bitLens[i] << " " << i << " " << (char)i << std::endl;
 
 	std::cout << std::endl;
+#endif
 
 	//start to create le tree
 	HuffmanTreeNode* cTree = BitLengthsToHTree(bitLens, alphabetSize, (u32*)CreateAlphabet(alphabetSize), alphabetSize);
@@ -617,6 +648,45 @@ HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSi
 
 	return cTree;
 }
+
+/**
+ * 
+ * LZ77 Encode
+ * 
+ * This function is for the LZ77 step of the DEFLATE algorith.
+ * This function takes in a pointer to some memory that contains
+ * the bytes to be compressed along with the size of the memory
+ * location and specificaiton such as the sliding window size
+ * 
+ * This function is called during Zlib::Deflate
+ * 
+ */
+
+RawBytes lz77_encode(u32* bytes, size_t len) {
+
+}
+
+/**
+ *
+ *  DEFLATE
+ * 
+ * This is the main function for deflate called with Zlib::Deflate.
+ * 
+ * This function takes some bytes and applies huffman coding and LZ77
+ * to compress the data.
+ * 
+ * Idk what else to put here to sound fancy
+ * 
+ */
+
+void Zlib::Deflate(u32* bytes, size_t len) {
+	if (bytes == nullptr || len <= 0) return; //quick length check
+
+	//compress the data first
+
+}
+
+//debug function don't call unless testing, wait, why is this here
 
 void Huffman::DebugMain() {
 	//const int testData[] = { 0x78,0x9c,0xf3,0x48,0xcd,0xc9,0xc9,0x57,0x70,0x4a,0xcc,0x03,0x42,0x45,0x00,0x20,0x1f,0x04,0x77 };

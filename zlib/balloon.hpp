@@ -22,11 +22,14 @@ My brain :)
 #define HUFFMAN_RESULT_ENCODE 0x02
 #define HUFFMAN_RESULT_DECODE 0x03
 
+//types
 #define u32 unsigned int
 #define i32 int
 #define u8 unsigned char
 #define i8 char
+#define byte unsigned char
 
+//huffman tree node
 struct HuffmanTreeNode {
 	HuffmanTreeNode* left = nullptr;
 	HuffmanTreeNode* right = nullptr;
@@ -40,6 +43,7 @@ struct HuffmanTreeNode {
 	}
 };
 
+//character count
 struct CharCount {
 	i32 count = 0;
 	u32 val = NULL;
@@ -61,6 +65,7 @@ struct RawBytes {
 	};
 };
 
+//result from huffman decode and encode
 struct HuffmanResult {
 	u32* bytes = nullptr;
 	std::vector<CharCount> charCount;
