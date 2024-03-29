@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #define INRANGE(v,m,x) (v >= m && v < x)
+#define MIN(a, b) (a <= b ? a : b)
 
 template<typename _Ty> void ZeroMem(_Ty* mem, size_t len) {
 	memset(mem, 0, sizeof(_Ty) * len);
@@ -662,8 +663,57 @@ HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSi
  * 
  */
 
-RawBytes lz77_encode(u32* bytes, size_t len) {
+#define LZ77_MIN_MATCH 3 // min match size for back reference
+#define LZ77_MAX_MATCH 256
 
+const int compression_table[10][5] = {
+ /*      good lazy nice max_chain_length */
+ /* 0 */ {0,    0,  0,    0},    /* store only */
+ /* 1 */ {4,    4,  8,    4},    /* max speed, no lazy matches */
+ /* 2 */ {4,    5, 16,    8},
+ /* 3 */ {4,    6, 32,   32},
+ /* 4 */ {4,    4, 16,   16},    /* lazy matches */
+ /* 5 */ {8,   16, 32,   32},
+ /* 6 */ {8,   16, 128, 128},
+ /* 7 */ {8,   32, 128, 256},
+ /* 8 */ {32, 128, 258, 1024},
+ /* 9 */ {32, 258, 258, 4096}    /* max compression */
+};
+
+//q is the big ol prime number
+RawBytes searchStr(char* str, char* query, i32 q) {
+
+}
+
+//shift window to the left by 1
+void ShiftWindow(char* win, size_t winSz) {
+
+}
+
+RawBytes lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096) {
+	lookAheadSz = MIN(len, lookAheadSz);
+
+	//constants and some vars
+	const i32 winSz = lookAheadSz + storeSz;
+	const i32 readPos = storeSz;
+	i32 bPos = 0;
+
+	//sliding window
+	char* window = new char[winSz];
+
+	ZeroMem(window, winSz); // clear sliding window
+
+	//initial population of window
+	for (i32 i = 0; i < lookAheadSz; i++)
+		window[winSz] = bytes[bPos++];
+
+	//parse everything
+	do {
+
+
+		//shift look window
+		ShiftWindow(window, winSz);
+	} while (bPos < len + lookAheadSz);
 }
 
 /**
