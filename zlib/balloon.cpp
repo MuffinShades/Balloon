@@ -669,7 +669,10 @@ const int compression_table[10][5] = {
 
 //from https://www.geeksforgeeks.org/rabin-karp-algorithm-for-pattern-searching/
 //q is the big ol prime number
-std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, const i32 q, const i32 alphabetSz) {
+std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, const i32 q, const i32 alphabetSz, i32 startMax = -1) {
+
+
+
 	i32 pHash = 0, bHash = 0, i, j, h = 1, szDiff = bufSz - qSz;
 	
 	for (i = 0; i < qSz - 1; i++)
@@ -691,8 +694,12 @@ std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, 
 					break;
 			}
 
-			if (j == qSz)
-				matches.push_back(i);
+			if (j == qSz) {
+				if (startMax < 0)
+					matches.push_back(i);
+				else if (j < startMax)
+					matches.push_back(i);
+			}
 		}
 
 		//
@@ -760,14 +767,14 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 		do {
 			//search for a match
 			lmatches = matches;
-			matches = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX, 256);
-
+			matches = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX, 256, storeSz);
+			
 			//look for le match
 			if (matches.size() <= 0) {
 				matches = lmatches;
 				break;
 			}
-
+			//std::cout << "BEST MATCH: " << bestMatch << "  " << window << "  " << window + storeSz << '\n';
 			//set new best match if one is found
 			bestMatch = matchLength;
 
@@ -923,6 +930,13 @@ void Huffman::DebugMain() {
 	//ZResult testRes2 = z.Inflate((u32*)out, sz);
 
 	//std::cout << "Test Result 2: " << testRes2.bytes << std::endl;
+
+	//string search testing
+	char testBuff[] = "Some random example text to be search by the search buffer function.";
+	std::vector<i32> searchRes = searchBuffer(testBuff, 68, (char*)"search", 6, INT_MAX, 256);
+
+	for (const auto& v : searchRes)
+		std::cout << "Search Res: " << v << std::endl; 
 
 	//back reference testing
 	char testStr[] = "abracadabrabababababababababababababababababanana";
