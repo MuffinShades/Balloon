@@ -4,6 +4,8 @@
 #define INRANGE(v,m,x) (v >= m && v < x)
 #define MIN(a, b) (a <= b ? a : b)
 
+//#define LZ77_TESTING
+
 template<typename _Ty> void ZeroMem(_Ty* mem, size_t len) {
 	memset(mem, 0, sizeof(_Ty) * len);
 }
@@ -522,7 +524,7 @@ HuffmanTreeNode* GenerateBaseTree(u32* _charCount, size_t alphabetSize) {
 
 		HuffmanTreeNode* _node = new HuffmanTreeNode;
 
-		std::cout << "Char Count: " << _charCount[i] << " " << (char)i << std::endl;
+		//std::cout << "Char Count: " << _charCount[i] << " " << (char)i << std::endl;
 
 		_node->count = _charCount[i];
 		_node->val = i;
@@ -545,7 +547,7 @@ HuffmanTreeNode* GenerateBaseTree(u32* _charCount, size_t alphabetSize) {
 		newNode->right = right;
 		newNode->val = -1;
 
-		std::cout << "Combine: " << (char)newNode->left->val << " " << newNode->left->count << "    R: " << (char)newNode->right->val << " " << newNode->right->count << std::endl;
+		//std::cout << "Combine: " << (char)newNode->left->val << " " << newNode->left->count << "    R: " << (char)newNode->right->val << " " << newNode->right->count << std::endl;
 
 		newNode->depth = MAX(left->depth, right->depth) + 1;
 
@@ -758,6 +760,40 @@ void ShiftWindow(char* win, size_t winSz, i32 amount) {
 	memset(win + (winSz - amount), 0, amount);
 }
 
+//get codes and indexs from length
+const i32 nLengths = 29;
+const i32 nDists = 30;
+
+//LengthBase
+//LengthExtraBits
+i32 lz77_get_len_idx(size_t len) {
+	i32 lastIdx = 0;
+
+	for (i32 i = 0; i < nLengths; i++) {
+		if (LengthBase[i] > len) break;
+
+		lastIdx = i;
+	}
+
+	return lastIdx;
+}
+
+//get codes and indexs from distances
+
+//LengthBase
+//LengthExtraBits
+i32 lz77_get_dist_idx(size_t dist) {
+	i32 lastIdx = 0;
+
+	for (i32 i = 0; i < nLengths; i++) {
+		if (DistanceBase[i] > dist) break;
+
+		lastIdx = i;
+	}
+
+	return lastIdx;
+}
+
 /**
  *
  * LZ77 Encode
@@ -773,9 +809,7 @@ void ShiftWindow(char* win, size_t winSz, i32 amount) {
 
 #include <string>
 
-#define LZ77_TESTING
-
-std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096) {
+std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096, HuffmanTreeNode* _distTree = nullptr) {
 	lookAheadSz = MIN(len, lookAheadSz);
 
 	//restult bytes
@@ -798,7 +832,11 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 	printWindow(window, winSz, readPos);
 
 	//found matches
-	std::vector<i32> matches, lmatches;
+	std::vector<i32> matches, lmatches, distanceIdxs;
+
+	//distance tree
+	HuffmanTreeNode* distTree = nullptr;
+	if (_distTree != nullptr) distTree = _distTree;
 
 	//parse everything
 	while (bPos < len + lookAheadSz) {
@@ -840,7 +878,19 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 				res.push_back(lStr[i]);
 			res.push_back('>');
 #else
+			//get length match index
+			i32 lenIdx = lz77_get_len_idx(matchLen);
 
+			//get distance match
+			i32 distIdx = lz77_get_dist_idx(dist);
+
+			distanceIdxs.push_back(res.size()); //add distance index
+
+			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
+			res.push_back(257 + lenIdx);
+			res.push_back(distIdx);
+			res.push_back(matchLen);
+			res.push_back(dist);
 #endif
 
 			winShift = matchLen;
