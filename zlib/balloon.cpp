@@ -672,8 +672,7 @@ void printb(char* buf, size_t sz) {
 	for (int i = 0; i < sz; i++) {
 		if (buf[i] != 0)
 			std::cout << buf[i];
-		else
-			std::cout << " ";
+		
 	}
 
 	std::cout << '\n';
@@ -702,10 +701,15 @@ void printWindow(char* win, size_t winSz, i32 readChar) {
 //from https://www.geeksforgeeks.org/rabin-karp-algorithm-for-pattern-searching/
 //q is the big ol prime number
 std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, const i32 q, const i32 alphabetSz, i32 startMax = -1) {
-	//std::cout << "Buffer: " << " " << bufSz << "  :";
-	//printb(buf, bufSz);
-	//std::cout << "Query: ";
-	//printb(query, qSz);
+	/*std::cout << std::endl;
+	std::cout << "-----------------------------" << std::endl;
+	std::cout << "Buffer: " << " " << startMax << "  :";
+	std::cout << std::endl;
+	printWindow(buf, bufSz, startMax);
+	std::cout << std::endl;
+	std::cout << "Query: ";
+	printb(query, qSz);
+	std::cout << std::endl;*/
 
 	i32 pHash = 0, bHash = 0, i, j, h = 1, szDiff = bufSz - qSz;
 	
@@ -731,7 +735,7 @@ std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, 
 			if (j == qSz) {
 				if (startMax < 0)
 					matches.push_back(i);
-				else if (j < startMax)
+				else if (i < startMax)
 					matches.push_back(i);
 			}
 		}
@@ -804,8 +808,8 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 		do {
 			//search for a match
 			lmatches = matches;
-			matches = searchBuffer(window, storeSz, window + storeSz, matchLength, INT_MAX, 256, storeSz);
-			
+			matches = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX, 256, storeSz);
+
 			//look for le match
 			if (matches.size() <= 0) {
 				matches = lmatches;
@@ -821,12 +825,12 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 		if (bestMatch >= LZ77_MIN_MATCH && matches.size() > 0) {
 			i32 match = matches[0],
 				dist = readPos - match,
-				len = bestMatch;
+				matchLen = bestMatch;
 
 			//now encode match
 
 #ifdef LZ77_TESTING
-			std::string dStr = std::to_string(dist), lStr = std::to_string(len);
+			std::string dStr = std::to_string(dist), lStr = std::to_string(matchLen);
 
 			res.push_back('<');
 			for (i32 i = 0; i < dStr.length(); i++)
@@ -839,7 +843,7 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 
 #endif
 
-			winShift = len;
+			winShift = matchLen;
 		}
 		//just add current character if no match is found
 		else
@@ -847,12 +851,20 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 
 		
 		//shift look window
+		printWindow(window, winSz, readPos);
 		ShiftWindow(window, winSz, winShift);
-		bPos += winShift;
-		winShift = 1;
+		printWindow(window, winSz, readPos);
 		//add new char to le window
-		if (bPos < len)
-			window[winSz - 1] = bytes[bPos];
+		do {
+			if (bPos < len)
+				window[winSz - winShift] = bytes[bPos++];
+			else
+				bPos++;
+		} while (--winShift>0);
+
+		printWindow(window, winSz, readPos);
+
+		winShift = 1;
 	}
 
 	//return le result
@@ -973,10 +985,10 @@ void Huffman::DebugMain() {
 
 	//string search testing
 	char testBuff[] = "Some random example text to be search by the search buffer function.";
-	std::vector<i32> searchRes = searchBuffer(testBuff, 68, (char*)"search", 6, INT_MAX, 256);
+	//std::vector<i32> searchRes = searchBuffer(testBuff, 68, (char*)"search", 6, INT_MAX, 256);
 
-	for (const auto& v : searchRes)
-		std::cout << "Search Res: " << v << std::endl; 
+	//for (const auto& v : searchRes)
+		//std::cout << "Search Res: " << v << std::endl; 
 
 	//back reference testing
 	char testStr[] = "abcdededede  banananana";
@@ -985,7 +997,7 @@ void Huffman::DebugMain() {
 	for (i32 i = 0; i < len; i++)
 		uTestStr[i] = (u32)testStr[i];
 
-	std::vector<u32> lz77testRes = lz77_encode(uTestStr, len);
+	std::vector<u32> lz77testRes = lz77_encode(uTestStr, len, 16, 32);
 
 	for (int i = 0; i < lz77testRes.size(); i++) {
 		std::cout << (char)lz77testRes[i];
