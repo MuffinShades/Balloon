@@ -838,6 +838,9 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 	HuffmanTreeNode* distTree = nullptr;
 	if (_distTree != nullptr) distTree = _distTree;
 
+	u32* distCounts = new u32[nDists];
+	ZeroMem(distCounts, nDists);
+
 	//parse everything
 	while (bPos < len + lookAheadSz) {
 		//search for match
@@ -885,6 +888,7 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 			i32 distIdx = lz77_get_dist_idx(dist);
 
 			distanceIdxs.push_back(res.size()); //add distance index
+			distCounts[distIdx]++; //increase distance count for le distance tree
 
 			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
 			res.push_back(257 + lenIdx);
@@ -915,6 +919,13 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 		printWindow(window, winSz, readPos);
 
 		winShift = 1;
+	}
+
+	//create distance tree
+	if (_distTree != nullptr) {
+		HuffmanTreeNode* bdTree = GenerateBaseTree(distCounts, nDists);
+		distTree = CovnertTreeToCanonical(bdTree, nDists);
+		FreeTree(bdTree);
 	}
 
 	//return le result
