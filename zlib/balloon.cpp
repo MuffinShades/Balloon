@@ -56,6 +56,25 @@ u32 DecodeSymbol(BitStream& stream, HuffmanTreeNode* tree) {
 	return n->val;
 }
 
+/**
+ *
+ * EncodeSymbol
+ *
+ * Function to encode a symbol with a given huffman tree. This
+ * is used by deflate for the huffman coding.
+ * 
+ * [u32] sym -> symbol to be encoded
+ * [HuffmanTreeNode*] tree -> huffman tree to encode the symbol 
+ * with
+ *
+ */
+
+u32 EncodeSymbol(u32 sym, HuffmanTreeNode* tree) {
+	assert(sym < tree->alphabetSz);
+}
+
+
+
 void InsertNode(u32 code, size_t codeLen, u32 val, HuffmanTreeNode* tree) {
 	HuffmanTreeNode* current = tree;
 	//std::cout << " ------------- " << std::endl;
@@ -794,6 +813,19 @@ i32 lz77_get_dist_idx(size_t dist) {
 	return lastIdx;
 }
 
+void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
+	if (nBits <= 0) return;
+
+	unsigned u32* bits = new u32[nBits];
+
+	for (i32 i = 0; i < nBits; i++)
+		bits[i] = (val >> i) & 0x1;
+
+	stream.writeNBits(bits, nBits);
+
+	delete[] bits;
+}
+
 /**
  *
  * LZ77 Encode
@@ -891,10 +923,12 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 			distCounts[distIdx]++; //increase distance count for le distance tree
 
 			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
-			res.push_back(257 + lenIdx);
-			res.push_back(distIdx);
-			res.push_back(matchLen);
-			res.push_back(dist);
+			res.push_back(
+				(257 + lenIdx) |   //12 bits
+				(distIdx << 12) |  //4 bits
+				((matchLen - LengthBase[lenIdx]) << 16) | //4 bits
+				((dist - DistanceBase[distIdx]) << 20)       //4 bits
+			);
 #endif
 
 			winShift = matchLen;
@@ -926,6 +960,31 @@ std::vector<u32> lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 
 		HuffmanTreeNode* bdTree = GenerateBaseTree(distCounts, nDists);
 		distTree = CovnertTreeToCanonical(bdTree, nDists);
 		FreeTree(bdTree);
+	}
+
+	//create bitstream
+	u32* bMem = new u32[0xff];
+	ZeroMem(bMem, 0xff);
+	BitStream rStream = BitStream(bMem, 0xff);
+
+	//now write stuff
+	for (const auto& lByte : res) {
+		if (lByte >= 257) {
+			//extract individual values from back reference
+			i32 lenBase   =  lByte & 0xfff,
+				distBase  = (lByte >> 0xc) & 0xf,
+				lenExtra  = (lByte >> 0x10) & 0xf,
+				distExtra = (lByte >> 0x14) & 0xf;
+
+			//construct back reference as bytes
+			rStream.writeValue<byte>(lenBase);
+			
+			WriteVBitsToStream(rStream, lenExtra, 3);
+			
+		}
+		else {
+			rStream.writeValue<u32>(lByte);
+		}
 	}
 
 	//return le result

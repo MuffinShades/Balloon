@@ -37,6 +37,8 @@ struct HuffmanTreeNode {
 	bool branch = false;
 	i32 count = 0;
 	i32 depth = 0;
+	u32* symCodes;
+	size_t alphabetSz;
 	~HuffmanTreeNode() {
 		//delete[] this->left;
 		//delete[] this->right;
