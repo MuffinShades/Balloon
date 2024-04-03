@@ -927,7 +927,7 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz
 	for (i32 i = 0; i < lookAheadSz; i++)
 		window[storeSz + i] = bytes[bPos++];
 
-	printWindow(window, winSz, readPos);
+	//printWindow(window, winSz, readPos);
 
 	//found matches
 	std::vector<i32> matches, lmatches, distanceIdxs;
@@ -1005,9 +1005,9 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz
 
 		
 		//shift look window
-		printWindow(window, winSz, readPos);
+		//printWindow(window, winSz, readPos);
 		ShiftWindow(window, winSz, winShift);
-		printWindow(window, winSz, readPos);
+		//printWindow(window, winSz, readPos);
 		//add new char to le window
 		do {
 			if (bPos < len)
@@ -1016,7 +1016,7 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz
 				bPos++;
 		} while (--winShift>0);
 
-		printWindow(window, winSz, readPos);
+		//printWindow(window, winSz, readPos);
 
 		winShift = 1;
 	}
@@ -1034,11 +1034,11 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz
 	//create bitstream
 	BitStream rStream = BitStream(0xff);
 
-	std::cout << "Generating Byte Result..." << std::endl;
+	//std::cout << "Generating Byte Result..." << std::endl;
 
 	//now write stuff
 	for (const auto& lByte : res) {
-		std::cout << "Byte: " << lByte << std::endl;
+		//std::cout << "Byte: " << lByte << std::endl;
 		//check for backreference
 		if (lByte >= 257) {
 			//extract individual values from back reference
