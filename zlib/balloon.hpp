@@ -86,8 +86,10 @@ public:
 	i32 pos = 0, rPos = 0;
 	i32 lBit = 0;
 	u32 cByte = 0;
-	u32 rBit = -1;
+	u32 rBit = 8;
 	size_t sz, bsz, asz;
+
+	//bit stream for reading existing bytes / bits
 	BitStream(u32 *bytes, size_t len) {
 		this->bytes = new u32[len];
 		memcpy(this->bytes, bytes, len * sizeof(u32));
@@ -95,6 +97,16 @@ public:
 		this->sz  = len;
 		this->asz = sz;
 		this->rPos = this->sz;
+	}
+
+	//basic zero allocation bit stream for writing
+	BitStream(size_t len) {
+		assert(len > 0);
+		this->bytes = new u32[len];
+		memset(this->bytes, 0, len * sizeof(u32));
+		this->bsz = len * 8;
+		this->asz = len;
+		this->rPos = 0;
 	}
 
 	i32 readBit() {
@@ -183,16 +195,20 @@ public:
 	void writeBit(u32 bit) {
 
 		//advance a byte if were out of range
-		if (this->rBit < 0) {
-			this->rBit = 7;
+		if (this->rBit <= 0) {
+			std::cout << "ALLOC " << this->sz << std::endl;
+			this->rBit = 8;
 			this->rPos++;
 			this->sz++;
 			this->checkWritePosition();
 		}
-
+		std::cout << "Bit Write: " << (bit & 1) << std::endl;
+		//std::cout << "Alloc done" << std::endl;
 		//now write bit
 		this->bytes[this->rPos] <<= 1;
 		this->bytes[this->rPos] |= (bit & 1); //& with 1 to just get first bit
+		std::cout << this->rPos << " " << this->rBit << "  " << this->sz << std::endl;
+		this->rBit--;
 	}
 
 
@@ -205,8 +221,8 @@ public:
 	//write short, long, int, uint, etc.
 	template<typename _T> void writeValue(_T val) {
 		size_t vsz = sizeof(_T) * 8;
-
-		for (size_t i = vsz - 1; i >= 0; --i)
+		;
+		for (i32 i = vsz - 1; i >= 0; i--)
 			this->writeBit((val >> i) & 1);
 	}
 
