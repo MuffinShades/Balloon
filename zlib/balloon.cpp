@@ -176,9 +176,9 @@ a[:b] creates an array with everything from a[0] - a[b-1]
 */
 
 i32 aMax(u32* a, size_t len) {
-	u32 max = -INFINITY;
+	i32 max = -INT_MAX;
 
-	for (int i = 0; i < len; i++) {
+	for (size_t i = 0; i < len; i++) {
 		if (a[i] > max) max = a[i];
 	}
 
@@ -882,7 +882,7 @@ i32 lz77_get_dist_idx(size_t dist) {
 void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
 	if (nBits <= 0) return;
 
-	unsigned u32* bits = new u32[nBits];
+	u32* bits = new u32[nBits];
 
 	for (i32 i = 0; i < nBits; i++)
 		bits[i] = (val >> i) & 0x1;
@@ -1083,8 +1083,14 @@ void Zlib::Deflate(u32* bytes, size_t len) {
 	if (bytes == nullptr || len <= 0) return; //quick length check
 
 	//compress the data first
+	i32 lz77winSzBase = 0;
+	BitStream rStream = BitStream(0xff);
+
+	byte cmf = (0x08 << 4) | (lz77winSzBase & 3);
+
 
 }
+
 
 //debug function don't call unless testing, wait, why is this here
 
