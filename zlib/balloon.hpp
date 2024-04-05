@@ -187,9 +187,8 @@ public:
 	}
 
 	void checkWritePosition() {
-		if (this->rPos == this->asz) {
+		if (this->rPos == this->asz)
 			this->allocNewChunk();
-		}
 	}
 
 	void writeBit(u32 bit) {
@@ -268,6 +267,22 @@ public:
 		memset(this->bytes, 0, sizeof(u32) * this->asz);
 		memcpy(this->bytes, tBytes, osz);
 		delete[] tBytes;
+	}
+
+	void calloc(size_t sz) {
+		if (this->bytes)
+			delete[] this->bytes;
+
+		this->bytes = new u32[sz];
+
+		this->asz = sz;
+		this->bsz = sz * 8;
+		this->pos = this->rPos = this->lBit = this->cByte = this->sz = 0;
+
+		i32 pos = 0, rPos = 0;
+		i32 lBit = 0;
+		u32 cByte = 0;
+		u32 rBit = 8;
 	}
 };
 

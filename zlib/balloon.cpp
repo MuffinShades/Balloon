@@ -3,6 +3,7 @@
 
 #define INRANGE(v,m,x) (v >= m && v < x)
 #define MIN(a, b) (a <= b ? a : b)
+#define WINDOW_BITS 4
 
 //#define LZ77_TESTING
 
@@ -176,7 +177,7 @@ a[:b] creates an array with everything from a[0] - a[b-1]
 */
 
 i32 aMax(u32* a, size_t len) {
-	i32 max = -INT_MAX;
+	i32 max = 0;
 
 	for (size_t i = 0; i < len; i++) {
 		if (a[i] > max) max = a[i];
@@ -191,6 +192,7 @@ Function to get the number of occuraces and bit length appears
 
 */
 i32* getBitLenCounts(u32* bitLens, size_t blLen, i32 MAX_BITS) {
+	std::cout << "MAX BITSL " << MAX_BITS << std::endl;
 	i32* res = new i32[MAX_BITS+1];
 
 	memset(res, 0, (MAX_BITS + 1) * sizeof(i32));
@@ -606,13 +608,14 @@ HuffmanTreeNode* GenerateBaseTree(u32* _charCount, size_t alphabetSize) {
 
 		HuffmanTreeNode* _node = new HuffmanTreeNode;
 
-		std::cout << "Char Count: " << _charCount[i] << " " << (char)i << std::endl;
-
 		_node->count = _charCount[i];
 		_node->val = i;
 
 		tNodes.push(_node);
 	}
+
+	if (tNodes.size() <= 0)
+		return nullptr;
 
 	//HuffmanTreeNode* root = nullptr;
 
@@ -643,9 +646,9 @@ HuffmanTreeNode* GenerateBaseTree(u32* _charCount, size_t alphabetSize) {
 		tNodes.push(newNode);
 	}
 
-
+	std::cout << "NNODES: " << tNodes.size() << std::endl;
 	HuffmanTreeNode* fNode = tNodes.top();
-
+	std::cout << "FNODE: " << fNode << std::endl;
 	if (!root)
 		root = fNode;
 
@@ -892,6 +895,35 @@ void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
 	delete[] bits;
 }
 
+//function to finish lz77 encoding
+void GenerateLz77Stream(BitStream& rStream, const std::vector<u32> res, HuffmanTreeNode* distTree) {
+	//now write stuff to the stream
+	for (const auto& lByte : res) {
+		//std::cout << "Byte: " << lByte << std::endl;
+		//check for backreference
+		if (lByte >= 257) {
+			//extract individual values from back reference
+			i32 lenIdx = lByte & 0xfff,
+				distIdx = (lByte >> 0xc) & 0xf,
+				lenExtra = (lByte >> 0x10) & 0xf,
+				distExtra = (lByte >> 0x14) & 0xf;
+
+			//construct back reference as bytes
+			rStream.writeValue<byte>(lenIdx);
+
+			WriteVBitsToStream(rStream, lenExtra, 3);
+
+			//encode and add distance index symbol
+			rStream.writeValue<byte>(EncodeSymbol(distIdx, distTree));
+			WriteVBitsToStream(rStream, distExtra, 3);
+		}
+		//write current byte if no back reference
+		else if (lByte < 256) {
+			rStream.writeValue<byte>(lByte);
+		}
+	}
+}
+
 /**
  *
  * LZ77 Encode
@@ -907,15 +939,16 @@ void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
 
 #include <string>
 
-BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz = 4096, HuffmanTreeNode* _distTree = nullptr) {
+BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTreeNode* _distTree = nullptr) {
 	lookAheadSz = MIN(len, lookAheadSz);
 
 	//restult bytes
 	std::vector<u32> res;
 
 	//constants and some vars
-	const i32 winSz = lookAheadSz + storeSz;
-	const i32 readPos = storeSz;
+	const i32 winSz = 1 << WINDOW_BITS;
+	const i32 storeSz = winSz - 288;
+	const i32 readPos = lookAheadSz;
 	i32 bPos = 0, winShift = 1;
 
 	//sliding window
@@ -1024,11 +1057,14 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz
 	//create distance tree
 	if (_distTree == nullptr) {
 		HuffmanTreeNode* bdTree = GenerateBaseTree(distCounts, nDists);
-		distTree = CovnertTreeToCanonical(bdTree, nDists);
-		FreeTree(bdTree);
 
-		//distance tree codes
-		GenerateCodeTable(distTree, 30);
+		if (bdTree != nullptr) {
+			distTree = CovnertTreeToCanonical(bdTree, nDists);
+			FreeTree(bdTree);
+
+			//distance tree codes
+			GenerateCodeTable(distTree, 30);
+		}
 	}
 
 	//create bitstream
@@ -1036,30 +1072,10 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 256, i32 storeSz
 
 	//std::cout << "Generating Byte Result..." << std::endl;
 
-	//now write stuff
-	for (const auto& lByte : res) {
-		//std::cout << "Byte: " << lByte << std::endl;
-		//check for backreference
-		if (lByte >= 257) {
-			//extract individual values from back reference
-			i32 lenIdx   =  lByte & 0xfff,
-				distIdx  = (lByte >> 0xc) & 0xf,
-				lenExtra  = (lByte >> 0x10) & 0xf,
-				distExtra = (lByte >> 0x14) & 0xf;
-
-			//construct back reference as bytes
-			rStream.writeValue<byte>(lenIdx);
-			
-			WriteVBitsToStream(rStream, lenExtra, 3);
-			
-			//encode and add distance index symbol
-			rStream.writeValue<byte>(EncodeSymbol(distIdx, distTree));
-			WriteVBitsToStream(rStream, distExtra, 3);
-		}
-		//write current byte if no back reference
-		else if (lByte < 256) {
-			rStream.writeValue<byte>(lByte);
-		}
+	if (distTree)
+		GenerateLz77Stream(rStream, res, distTree);
+	else {
+		
 	}
 
 	//return le result
@@ -1206,7 +1222,7 @@ void Huffman::DebugMain() {
 
 	std::cout << std::endl;*/
 
-	BitStream lz77testRes = lz77_encode(uTestStr, len, 16, 32);
+	BitStream lz77testRes = lz77_encode(uTestStr, len, 16);
 
 	for (int i = 0; i < lz77testRes.sz; i++) {
 		std::cout << (char)lz77testRes.bytes[i];
