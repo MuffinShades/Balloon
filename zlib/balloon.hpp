@@ -195,18 +195,18 @@ public:
 
 		//advance a byte if were out of range
 		if (this->rBit <= 0) {
-			std::cout << "ALLOC " << this->sz << std::endl;
+			//std::cout << "ALLOC " << this->sz << std::endl;
 			this->rBit = 8;
 			this->rPos++;
 			this->sz++;
 			this->checkWritePosition();
 		}
-		std::cout << "Bit Write: " << (bit & 1) << std::endl;
+		//std::cout << "Bit Write: " << (bit & 1) << std::endl;
 		//std::cout << "Alloc done" << std::endl;
 		//now write bit
 		this->bytes[this->rPos] <<= 1;
 		this->bytes[this->rPos] |= (bit & 1); //& with 1 to just get first bit
-		std::cout << this->rPos << " " << this->rBit << "  " << this->sz << std::endl;
+		//std::cout << this->rPos << " " << this->rBit << "  " << this->sz << std::endl;
 		this->rBit--;
 	}
 

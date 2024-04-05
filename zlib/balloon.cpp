@@ -3,7 +3,7 @@
 
 #define INRANGE(v,m,x) (v >= m && v < x)
 #define MIN(a, b) (a <= b ? a : b)
-#define WINDOW_BITS 4
+#define WINDOW_BITS 15
 
 //#define LZ77_TESTING
 
@@ -124,7 +124,7 @@ u32 EncodeSymbol(u32 sym, HuffmanTreeNode* tree) {
 	if (tree->symCodes == nullptr)
 		GenerateCodeTable(tree, tree->alphabetSz);
 
-	std::cout << "SYMBOL: " << sym << " " << tree->alphabetSz << std::endl;
+	//std::cout << "SYMBOL: " << sym << " " << tree->alphabetSz << std::endl;
 
 	return tree->symCodes[sym];
 }
@@ -192,7 +192,7 @@ Function to get the number of occuraces and bit length appears
 
 */
 i32* getBitLenCounts(u32* bitLens, size_t blLen, i32 MAX_BITS) {
-	std::cout << "MAX BITSL " << MAX_BITS << std::endl;
+	//std::cout << "MAX BITSL " << MAX_BITS << std::endl;
 	i32* res = new i32[MAX_BITS+1];
 
 	memset(res, 0, (MAX_BITS + 1) * sizeof(i32));
@@ -334,6 +334,7 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 	u32* da = (unsigned*)CreateAlphabet(30);
 	u32* dm = (unsigned*)CreateAlphabet(286);
 
+#ifdef BALLOON_DEBUG
 	for (int i = 0; i < treeLens.size(); i++)
 		if (treeLens[i] > 0) std::cout << "Bit Len: " << treeLens[i] << "  " << i << "   " << (char)i << std::endl;
 
@@ -341,6 +342,7 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 		if (treeLens[i] > 0) std::cout << treeLens[i];
 
 	std::cout << std::endl;
+#endif
 
 	//create le trees
 	HuffmanTreeNode* distTree = BitLengthsToHTree(distLens.data(), distLens.size(), da, 30);
@@ -567,7 +569,7 @@ u32* GetCharCount(u32* bytes, size_t len, size_t alphabetSize) {
 	for (i32 i = 0; i < len; i++) {
 		if (INRANGE(bytes[i], 0, alphabetSize)) {
 			_charCount[bytes[i]]++;
-			std::cout << "Sym: " << bytes[i] << " " << (char) bytes[i] <<" " << _charCount[bytes[i]] <<  std::endl;
+			//std::cout << "Sym: " << bytes[i] << " " << (char) bytes[i] <<" " << _charCount[bytes[i]] <<  std::endl;
 		} 
 		else
 			std::cout << "Error, unknown symbol: " << bytes[i] << std::endl;
@@ -646,9 +648,9 @@ HuffmanTreeNode* GenerateBaseTree(u32* _charCount, size_t alphabetSize) {
 		tNodes.push(newNode);
 	}
 
-	std::cout << "NNODES: " << tNodes.size() << std::endl;
+	//std::cout << "NNODES: " << tNodes.size() << std::endl;
 	HuffmanTreeNode* fNode = tNodes.top();
-	std::cout << "FNODE: " << fNode << std::endl;
+	//std::cout << "FNODE: " << fNode << std::endl;
 	if (!root)
 		root = fNode;
 
@@ -790,6 +792,7 @@ void printWindow(char* win, size_t winSz, i32 readChar) {
 
 //from https://www.geeksforgeeks.org/rabin-karp-algorithm-for-pattern-searching/
 //q is the big ol prime number
+//TODO OPTIMIZE A LOT
 std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, const i32 q, const i32 alphabetSz, i32 startMax = -1) {
 	/*std::cout << std::endl;
 	std::cout << "-----------------------------" << std::endl;
@@ -896,12 +899,13 @@ void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
 }
 
 //function to finish lz77 encoding
-void GenerateLz77Stream(BitStream& rStream, const std::vector<u32> res, HuffmanTreeNode* distTree) {
+void GenerateLz77Stream(BitStream& rStream, std::vector<u32>& res, HuffmanTreeNode* distTree) {
 	//now write stuff to the stream
 	for (const auto& lByte : res) {
 		//std::cout << "Byte: " << lByte << std::endl;
 		//check for backreference
 		if (lByte >= 257) {
+			//std::cout << "Generating Back Ref" << std::endl;
 			//extract individual values from back reference
 			i32 lenIdx = lByte & 0xfff,
 				distIdx = (lByte >> 0xc) & 0xf,
@@ -919,6 +923,7 @@ void GenerateLz77Stream(BitStream& rStream, const std::vector<u32> res, HuffmanT
 		}
 		//write current byte if no back reference
 		else if (lByte < 256) {
+			//std::cout << "\t no back ref: " << lByte << std::endl;
 			rStream.writeValue<byte>(lByte);
 		}
 	}
@@ -947,8 +952,8 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
 
 	//constants and some vars
 	const i32 winSz = 1 << WINDOW_BITS;
-	const i32 storeSz = winSz - 288;
-	const i32 readPos = lookAheadSz;
+	const i32 storeSz = winSz - lookAheadSz;
+	const i32 readPos = storeSz;
 	i32 bPos = 0, winShift = 1;
 
 	//sliding window
@@ -974,6 +979,7 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
 
 	//parse everything
 	while (bPos < len + lookAheadSz) {
+		std::cout << "Encoding Symbol: " << bPos << " / " << (len + lookAheadSz) << std::endl;
 		//search for match
 		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
 
@@ -1036,7 +1042,7 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
 		else
 			res.push_back(window[readPos]);
 
-		
+		//std::cout << "CHAR: " << window[readPos] << std::endl;
 		//shift look window
 		//printWindow(window, winSz, readPos);
 		ShiftWindow(window, winSz, winShift);
@@ -1071,11 +1077,14 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
 	BitStream rStream = BitStream(0xff);
 
 	//std::cout << "Generating Byte Result..." << std::endl;
+	std::cout << "Generating Byte Stream..." << std::endl;
 
 	if (distTree)
 		GenerateLz77Stream(rStream, res, distTree);
 	else {
-		
+		delete[] rStream.bytes;
+
+		return BitStream(res.data(), res.size());
 	}
 
 	//return le result
@@ -1208,11 +1217,20 @@ void Huffman::DebugMain() {
 		//std::cout << "Search Res: " << v << std::endl; 
 
 	//back reference testing
-	char testStr[] = "abcdedededededededededededededededededededededededededededededededede Some random example text to be search by the search buffer function. hbasldfkjalsdjfoiasdjfoijasdf umm idk what else to write i guess ill just write my thoughts which is what im writing right now woo almost mispelled that";
+	/*char testStr[] = "abcdedededededededededededededededededededededededededededededededede Some random example text to be search by the search buffer function. hbasldfkjalsdjfoiasdjfoijasdf umm idk what else to write i guess ill just write my thoughts which is what im writing right now woo almost mispelled that";
 	size_t len = strlen(testStr);
 	u32 *uTestStr = new u32[len];
 	for (i32 i = 0; i < len; i++)
-		uTestStr[i] = (u32)testStr[i];
+		uTestStr[i] = (u32)testStr[i];*/
+
+	size_t len = (1 << 24);
+
+	u32* uTestStr = new u32[len];
+
+	srand(time(NULL));
+
+	for (size_t i = 0; i < len; i++)
+		uTestStr[i] = (u32)((rand()%74) + 48);
 
 	/*std::vector<u32> lz77testRes = lz77_encode(uTestStr, len, 16, 32);
 
@@ -1222,7 +1240,7 @@ void Huffman::DebugMain() {
 
 	std::cout << std::endl;*/
 
-	BitStream lz77testRes = lz77_encode(uTestStr, len, 16);
+	BitStream lz77testRes = lz77_encode(uTestStr, len, 288);
 
 	for (int i = 0; i < lz77testRes.sz; i++) {
 		std::cout << (char)lz77testRes.bytes[i];
