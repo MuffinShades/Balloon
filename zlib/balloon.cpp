@@ -4,6 +4,8 @@
 #define INRANGE(v,m,x) (v >= m && v < x)
 #define MIN(a, b) (a <= b ? a : b)
 #define WINDOW_BITS 15
+#define MIN_MATCH 3
+#define MEM_LEVEL 8
 
 //#define LZ77_TESTING
 
@@ -18,6 +20,12 @@ void FreeTree(HuffmanTreeNode* tree) {
 
 		delete tree;
 	}
+}
+
+template<typename _Ty> void BufLen(_Ty* buf) {
+	size_t sz = 0;
+	do { } while (*buf[sz++] != 0);
+	return sz / sizeof(_Ty);
 }
 
 void PrintTree(HuffmanTreeNode* tree, std::string tab = "", std::string code = "") {
@@ -846,9 +854,16 @@ std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, 
 }
 
 //shift window to the left by 1
-void ShiftWindow(char* win, size_t winSz, i32 amount) {
-	memcpy(win, win + amount, winSz - amount);
-	memset(win + (winSz - amount), 0, amount);
+void ShiftWindow(char* win, i32 winSz, i32 amount) {
+	win += amount;
+	i32 _sz = winSz;
+	do {
+		*(win - amount) = *win++;
+		std::cout << _sz << std::endl;
+	} while (--_sz > 0);
+
+	//memcpy(win, win + amount, winSz - amount);
+	//memset(win + (winSz - amount), 0, amount);
 }
 
 //get codes and indexs from length
@@ -929,6 +944,86 @@ void GenerateLz77Stream(BitStream& rStream, std::vector<u32>& res, HuffmanTreeNo
 	}
 }
 
+//macro to update an existing hash
+#define UPDATE_HASH(h,c,i) (((h << i.hShift) ^ c) & i.hMask)
+
+//hash info used by update hash macro
+struct hashInfo {
+public:
+	u32 hBits, hSz, hMask, hShift;
+
+	hashInfo(u32 bits) {
+		this->hBits = bits;
+		this->hSz = 1 << this->hBits;
+		this->hShift = (this->hBits + MIN_MATCH - 1) / MIN_MATCH;
+		this->hMask = this->hSz - 1; //set to h size minus one to get a value with a variable number of fs, i.e 0xffff or 0xffffffff
+	}
+};
+
+
+//to shift le hash around
+
+void shiftHash(u32* hash, size_t hSz) {
+
+}
+
+//match struct returned by speedMatch
+struct _match {
+public:
+	size_t dist;
+	size_t len;
+};
+
+/*
+ *
+ * speedMatch
+ * 
+ * Function to get the longest string in a lz77 stream
+ * This is the hashed version the way zlib does it cause just
+ * searching the string every time is slow as heck
+ * 
+ * Based off of longest_match from zlib https://github.com/madler/zlib/blob/develop/deflate.c
+ * 
+ */
+
+#define MAX_MATCH 258
+
+_match longestMatch(size_t matchStart, u32* prevHash, u32 readPos, u32* window, size_t winSz, u32 maxChain, u32 niceLen, u32 prevBest) {
+	u32 cMatch = matchStart;
+	const i32 _winMask = winSz - 1;
+	u32* searchBuffer = window + readPos;
+	u32* searchEnd = window + readPos + MAX_MATCH;
+
+	u32 bestMatch = prevBest;
+	i32 bestPos = -1;
+
+	while (maxChain-- > 0 && cMatch > 0) {
+		u32* cur = window + cMatch;
+		i32 matchLength = 0;
+
+		//do le search
+		while (*++cur == *++searchBuffer && searchBuffer < searchEnd)
+			matchLength++;
+
+		if (matchLength > bestMatch) {
+			bestMatch = matchLength;
+			bestPos = cMatch;
+		}
+
+		//break if search is good enough for us
+		if (bestMatch >= niceLen)
+			break;
+
+		cMatch = prevHash[cMatch & _winMask];
+	}
+
+	_match res;
+	res.len = bestMatch;
+	res.dist = readPos - bestPos;
+
+	return res;
+}
+
 /**
  *
  * LZ77 Encode
@@ -944,7 +1039,7 @@ void GenerateLz77Stream(BitStream& rStream, std::vector<u32>& res, HuffmanTreeNo
 
 #include <string>
 
-BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTreeNode* _distTree = nullptr) {
+BitStream lz77_encode_slow(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTreeNode* _distTree = nullptr) {
 	lookAheadSz = MIN(len, lookAheadSz);
 
 	//restult bytes
@@ -979,7 +1074,8 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
 
 	//parse everything
 	while (bPos < len + lookAheadSz) {
-		std::cout << "Encoding Symbol: " << bPos << " / " << (len + lookAheadSz) << std::endl;
+		if (bPos % 256 == 0)
+			std::cout << "Encoding Symbol: " << bPos << " / " << (len + lookAheadSz) << '\n';
 		//search for match
 		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
 
@@ -1054,6 +1150,155 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
 			else
 				bPos++;
 		} while (--winShift>0);
+
+		//printWindow(window, winSz, readPos);
+
+		winShift = 1;
+	}
+
+	//create distance tree
+	if (_distTree == nullptr) {
+		HuffmanTreeNode* bdTree = GenerateBaseTree(distCounts, nDists);
+
+		if (bdTree != nullptr) {
+			distTree = CovnertTreeToCanonical(bdTree, nDists);
+			FreeTree(bdTree);
+
+			//distance tree codes
+			GenerateCodeTable(distTree, 30);
+		}
+	}
+
+	//create bitstream
+	BitStream rStream = BitStream(0xff);
+
+	//std::cout << "Generating Byte Result..." << std::endl;
+	std::cout << "Generating Byte Stream..." << std::endl;
+
+	if (distTree)
+		GenerateLz77Stream(rStream, res, distTree);
+	else {
+		delete[] rStream.bytes;
+
+		return BitStream(res.data(), res.size());
+	}
+
+	//return le result
+	return rStream;
+}
+
+u32 InsertStrIntoHash(const i32 strPos, u32* hashTable, u32* prev, u32& cHash, char* window, size_t winSz, hashInfo hInf) {
+	UPDATE_HASH(cHash, window[strPos + (LZ77_MIN_MATCH - 1)], hInf);
+	u32 res = prev[strPos & (winSz - 1)] = hashTable[cHash]; //basically return previous hash and update current hash with new :3
+	hashTable[cHash] = strPos;
+	return res;
+}
+
+BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTreeNode* _distTree = nullptr) {
+	lookAheadSz = MIN(len, lookAheadSz);
+
+	//restult bytes
+	std::vector<u32> res;
+
+	//constants and some vars
+	const i32 winSz = 1 << WINDOW_BITS;
+	const i32 storeSz = winSz - lookAheadSz;
+	const i32 readPos = storeSz;
+	i32 bPos = 0, winShift = 1;
+
+	//sliding window
+	char* window = new char[winSz];
+
+	ZeroMem(window, winSz); // clear sliding window
+
+	//initial population of window
+	for (i32 i = 0; i < lookAheadSz; i++)
+		window[storeSz + i] = bytes[bPos++];
+
+	//printWindow(window, winSz, readPos);
+
+	//found matches
+	std::vector<i32> matches, lmatches, distanceIdxs;
+
+	//distance tree
+	HuffmanTreeNode* distTree = nullptr;
+	if (_distTree != nullptr) distTree = _distTree;
+
+	u32* distCounts = new u32[nDists];
+	ZeroMem(distCounts, nDists);
+
+	//hash stuff
+	hashInfo hInf = hashInfo(MEM_LEVEL);
+
+	u32* hashTable = new u32[hInf.hSz];
+	u32* prev = new u32[winSz];
+	u32 cHash = NULL;
+
+	//parse everything
+	while (bPos < len + lookAheadSz) {
+		//if (bPos % 2048 == 0)
+			//std::cout << "Encoding Symbol: " << bPos << " / " << (len + lookAheadSz) << '\n';
+		//search for match
+		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
+
+		u32 head = NULL;
+		//head = InsertStrIntoHash(readPos, hashTable, prev, cHash, window, winSz, hInf);
+
+		//determine whether or not there is a back reference
+		if (bestMatch >= LZ77_MIN_MATCH && matches.size() > 0) {
+			i32 match = matches[0],
+				dist = readPos - match,
+				matchLen = bestMatch;
+
+			//now encode match
+
+#ifdef LZ77_TESTING
+			std::string dStr = std::to_string(dist), lStr = std::to_string(matchLen);
+
+			res.push_back('<');
+			for (i32 i = 0; i < dStr.length(); i++)
+				res.push_back(dStr[i]);
+			res.push_back(',');
+			for (i32 i = 0; i < lStr.length(); i++)
+				res.push_back(lStr[i]);
+			res.push_back('>');
+#else
+			//get length match index
+			i32 lenIdx = lz77_get_len_idx(matchLen);
+
+			//get distance match
+			i32 distIdx = lz77_get_dist_idx(dist);
+
+			distanceIdxs.push_back(res.size()); //add distance index
+			distCounts[distIdx]++; //increase distance count for le distance tree
+
+			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
+			res.push_back(
+				(257 + lenIdx) |   //12 bits
+				(distIdx << 12) |  //4 bits
+				((matchLen - LengthBase[lenIdx]) << 16) | //4 bits
+				((dist - DistanceBase[distIdx]) << 20)       //4 bits
+			);
+#endif
+
+			winShift = matchLen;
+		}
+		//just add current character if no match is found
+		else
+			res.push_back(window[readPos]);
+
+		//std::cout << "CHAR: " << window[readPos] << std::endl;
+		//shift look window
+		//printWindow(window, winSz, readPos);
+		ShiftWindow(window, winSz, winShift);
+		//printWindow(window, winSz, readPos);
+		//add new char to le window
+		do {
+			if (bPos < len)
+				window[winSz - winShift] = bytes[bPos++];
+			else
+				bPos++;
+		} while (--winShift > 0);
 
 		//printWindow(window, winSz, readPos);
 
