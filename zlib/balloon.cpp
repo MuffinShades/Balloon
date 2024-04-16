@@ -1134,7 +1134,7 @@ void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level
 		i32 i;
 
 		for (i = 0; i++ < 30;)
-
+			
 
 
 		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(treeBitCounts, 30);
