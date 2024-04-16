@@ -195,7 +195,7 @@ public:
 
 		//advance a byte if were out of range
 		if (this->rBit <= 0) {
-			//std::cout << "ALLOC " << this->sz << std::endl;
+			std::cout << "ALLOC " << this->sz << std::endl;
 			this->rBit = 8;
 			this->rPos++;
 			this->sz++;
@@ -220,7 +220,7 @@ public:
 	//write short, long, int, uint, etc.
 	template<typename _T> void writeValue(_T val) {
 		size_t vsz = sizeof(_T) * 8;
-		;
+		
 		for (i32 i = vsz - 1; i >= 0; i--)
 			this->writeBit((val >> i) & 1);
 	}
@@ -303,5 +303,5 @@ struct ZResult {
 class Zlib {
 public:
 	ZResult Inflate(u32* bytes, size_t len);
-	void Deflate(u32* bytes, size_t len);
+	void Deflate(u32* bytes, size_t len, const int level);
 };

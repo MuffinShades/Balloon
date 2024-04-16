@@ -137,6 +137,9 @@
   <ItemGroup>
     <ClInclude Include="balloon.hpp" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="legacy.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

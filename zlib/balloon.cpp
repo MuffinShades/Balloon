@@ -751,9 +751,9 @@ HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSi
 }
 
 #define LZ77_MIN_MATCH 3 // min match size for back reference
-#define LZ77_MAX_MATCH 256
+#define LZ77_MAX_MATCH 258
 
-const int compression_table[10][5] = {
+const int compression_table_old[10][5] = {
  /*      good lazy nice max_chain_length */
  /* 0 */ {0,    0,  0,    0},    /* store only */
  /* 1 */ {4,    4,  8,    4},    /* max speed, no lazy matches */
@@ -798,74 +798,6 @@ void printWindow(char* win, size_t winSz, i32 readChar) {
 	std::cout << std::endl;
 }
 
-//from https://www.geeksforgeeks.org/rabin-karp-algorithm-for-pattern-searching/
-//q is the big ol prime number
-//TODO OPTIMIZE A LOT
-std::vector<i32> searchBuffer(char* buf, size_t bufSz, char* query, size_t qSz, const i32 q, const i32 alphabetSz, i32 startMax = -1) {
-	/*std::cout << std::endl;
-	std::cout << "-----------------------------" << std::endl;
-	std::cout << "Buffer: " << " " << startMax << "  :";
-	std::cout << std::endl;
-	printWindow(buf, bufSz, startMax);
-	std::cout << std::endl;
-	std::cout << "Query: ";
-	printb(query, qSz);
-	std::cout << std::endl;*/
-
-	i32 pHash = 0, bHash = 0, i, j, h = 1, szDiff = bufSz - qSz;
-	
-	for (i = 0; i < qSz - 1; i++)
-		h = (h * alphabetSz) % q;
-
-	//computer first hashes
-	for (i = 0; i < qSz; i++) {
-		pHash = (pHash * alphabetSz + query[i]) % q;
-		bHash = (bHash * alphabetSz + buf[i]) % q;
-	}
-
-	std::vector<i32> matches;
-
-	//now search
-	for (i = 0; i <= szDiff; i++) {
-		if (pHash == bHash) {
-			for (j = 0; j < qSz; j++) {
-				if (buf[i + j] != query[j])
-					break;
-			}
-
-			if (j == qSz) {
-				if (startMax < 0)
-					matches.push_back(i);
-				else if (i < startMax)
-					matches.push_back(i);
-			}
-		}
-
-		//
-		if (i < szDiff) {
-			bHash = (alphabetSz * (bHash - buf[i] * h) + buf[i + qSz]) % q;
-
-			if (bHash < 0) bHash += q;
-		}
-	}
-
-	//return le matches
-	return matches;
-}
-
-//shift window to the left by 1
-void ShiftWindow(char* win, i32 winSz, i32 amount) {
-	win += amount;
-	i32 _sz = winSz;
-	do {
-		*(win - amount) = *win++;
-		std::cout << _sz << std::endl;
-	} while (--_sz > 0);
-
-	//memcpy(win, win + amount, winSz - amount);
-	//memset(win + (winSz - amount), 0, amount);
-}
-
 //get codes and indexs from length
 const i32 nLengths = 29;
 const i32 nDists = 30;
@@ -899,18 +831,59 @@ i32 lz77_get_dist_idx(size_t dist) {
 
 	return lastIdx;
 }
+#include <unordered_map>
+
+typedef long i64;
+typedef unsigned long u64;
+
+#define MIN(a,b) (a > b ? b : a)
+#define MAX_MATCH 258
+
+void shiftTable(std::unordered_map<std::string, i32>& table, const size_t amount) {
+	for (auto& item : table) {
+		item.second -= amount;
+
+		if (item.second <= 0)
+			table.erase(table.find(item.first));
+	}
+}
+
+#define INSERT_HASH(hash, key, value, res) res = hash[key]; hash[key] = value+1;
+
+i32 longest_match(u32* win, u32* sWin, i32 maxMatch) {
+	i32 sz = 3;
+	u32* match = sWin;
+
+	do {} while (
+		*win++ == *match++ &&
+		sz++ < maxMatch
+		);
+
+	return sz;
+}
+
+#define MAX(a, b) (a > b ? a : b)
+
+void flushHash(std::unordered_map<std::string, i64>& table, u64 offset) {
+	//std::cout << "flushing hash: " << table.size() << "  " << offset << std::endl;
+	//u64 remAmount = 0;
+	std::vector<std::string> eraseStr;
+	for (auto& [key, value] : table) {
+		//std::cout << key << " : " << value << "  " << (i64)(value - offset) << std::endl;
+		if ((i64)(value - offset) <= 0)
+			eraseStr.push_back(key);
+	}
+	// std::cout << "flush done..." << eraseStr.size() << std::endl;
+
+	for (auto& str : eraseStr)
+		table.erase(str);
+}
 
 void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
 	if (nBits <= 0) return;
 
-	u32* bits = new u32[nBits];
-
-	for (i32 i = 0; i < nBits; i++)
-		bits[i] = (val >> i) & 0x1;
-
-	stream.writeNBits(bits, nBits);
-
-	delete[] bits;
+	for (i32 i = nBits - 1; i >= 0; i--)
+		stream.writeBit((val >> i) & 1);
 }
 
 //function to finish lz77 encoding
@@ -922,10 +895,12 @@ void GenerateLz77Stream(BitStream& rStream, std::vector<u32>& res, HuffmanTreeNo
 		if (lByte >= 257) {
 			//std::cout << "Generating Back Ref" << std::endl;
 			//extract individual values from back reference
-			i32 lenIdx = lByte & 0xfff,
+			i32 lenIdx = (lByte & 0xfff) - 257,
 				distIdx = (lByte >> 0xc) & 0xf,
 				lenExtra = (lByte >> 0x10) & 0xf,
 				distExtra = (lByte >> 0x14) & 0xf;
+
+			std::cout << "Back Ref: " << lenIdx << " " << distIdx << " " << lenExtra << " " << distExtra << std::endl;
 
 			//construct back reference as bytes
 			rStream.writeValue<byte>(lenIdx);
@@ -938,402 +913,182 @@ void GenerateLz77Stream(BitStream& rStream, std::vector<u32>& res, HuffmanTreeNo
 		}
 		//write current byte if no back reference
 		else if (lByte < 256) {
-			//std::cout << "\t no back ref: " << lByte << std::endl;
+			std::cout << "\t no back ref: " << lByte << std::endl;
 			rStream.writeValue<byte>(lByte);
 		}
 	}
 }
 
-//macro to update an existing hash
-#define UPDATE_HASH(h,c,i) (((h << i.hShift) ^ c) & i.hMask)
-
-//hash info used by update hash macro
-struct hashInfo {
-public:
-	u32 hBits, hSz, hMask, hShift;
-
-	hashInfo(u32 bits) {
-		this->hBits = bits;
-		this->hSz = 1 << this->hBits;
-		this->hShift = (this->hBits + MIN_MATCH - 1) / MIN_MATCH;
-		this->hMask = this->hSz - 1; //set to h size minus one to get a value with a variable number of fs, i.e 0xffff or 0xffffffff
-	}
-};
-
-
-//to shift le hash around
-
-void shiftHash(u32* hash, size_t hSz) {
-
-}
-
-//match struct returned by speedMatch
-struct _match {
-public:
-	size_t dist;
-	size_t len;
-};
-
 /*
- *
- * speedMatch
- * 
- * Function to get the longest string in a lz77 stream
- * This is the hashed version the way zlib does it cause just
- * searching the string every time is slow as heck
- * 
- * Based off of longest_match from zlib https://github.com/madler/zlib/blob/develop/deflate.c
- * 
- */
 
-#define MAX_MATCH 258
+LZ77 encode
 
-_match longestMatch(size_t matchStart, u32* prevHash, u32 readPos, u32* window, size_t winSz, u32 maxChain, u32 niceLen, u32 prevBest) {
-	u32 cMatch = matchStart;
-	const i32 _winMask = winSz - 1;
-	u32* searchBuffer = window + readPos;
-	u32* searchEnd = window + readPos + MAX_MATCH;
+This is the fast version of le algorithm.
 
-	u32 bestMatch = prevBest;
-	i32 bestPos = -1;
+Rn it can only get around 4-6 mb/s but thats better than 3kb/s
 
-	while (maxChain-- > 0 && cMatch > 0) {
-		u32* cur = window + cMatch;
-		i32 matchLength = 0;
 
-		//do le search
-		while (*++cur == *++searchBuffer && searchBuffer < searchEnd)
-			matchLength++;
+*/
 
-		if (matchLength > bestMatch) {
-			bestMatch = matchLength;
-			bestPos = cMatch;
-		}
+#define BALLOON_DEBUG
 
-		//break if search is good enough for us
-		if (bestMatch >= niceLen)
-			break;
+struct lz77_res {
+	std::vector<u32> rStream;
+	char* charCounts;
+	HuffmanTreeNode* distTree;
+};
 
-		cMatch = prevHash[cMatch & _winMask];
-	}
+lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t lookahead, HuffmanTreeNode* _distTree = nullptr, const int alphabetSize = 288) {
+	const size_t winSz = MAX((size_t)1 << winBits, lookahead + 1);
 
-	_match res;
-	res.len = bestMatch;
-	res.dist = readPos - bestPos;
+	lz77_res* res = new lz77_res;
 
-	return res;
-}
+	res->charCounts = new char[alphabetSize];
 
-/**
- *
- * LZ77 Encode
- *
- * This function is for the LZ77 step of the DEFLATE algorith.
- * This function takes in a pointer to some memory that contains
- * the bytes to be compressed along with the size of the memory
- * location and specificaiton such as the sliding window size
- *
- * This function is called during Zlib::Deflate
- *
- */
+	u32* window = bytes;
+	i32 winLeft = 0, winRight = MIN(sz, lookahead), bytesLeft = sz - winRight;
+	//memset(window, 0, winSz);
+	const size_t readPos = winSz - lookahead;
+	size_t currentByte = 0;
 
-#include <string>
 
-BitStream lz77_encode_slow(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTreeNode* _distTree = nullptr) {
-	lookAheadSz = MIN(len, lookAheadSz);
+	std::unordered_map<std::string, i64> hashTable;
+	std::vector<u32> rStream;
 
-	//restult bytes
-	std::vector<u32> res;
+	i32 printThreshold = sz / (1 << 4);
+	std::string insertStr;
+	i64 prevHash = 0;
+	u32 fsz = 0;
+	size_t shiftAmount = 1;
+	u64 hashOffset = 0;
 
-	//constants and some vars
-	const i32 winSz = 1 << WINDOW_BITS;
-	const i32 storeSz = winSz - lookAheadSz;
-	const i32 readPos = storeSz;
-	i32 bPos = 0, winShift = 1;
-
-	//sliding window
-	char* window = new char[winSz];
-
-	ZeroMem(window, winSz); // clear sliding window
-
-	//initial population of window
-	for (i32 i = 0; i < lookAheadSz; i++)
-		window[storeSz + i] = bytes[bPos++];
-
-	//printWindow(window, winSz, readPos);
-
-	//found matches
+	//distance and lengtth info
 	std::vector<i32> matches, lmatches, distanceIdxs;
-
-	//distance tree
-	HuffmanTreeNode* distTree = nullptr;
-	if (_distTree != nullptr) distTree = _distTree;
 
 	u32* distCounts = new u32[nDists];
 	ZeroMem(distCounts, nDists);
 
-	//parse everything
-	while (bPos < len + lookAheadSz) {
-		if (bPos % 256 == 0)
-			std::cout << "Encoding Symbol: " << bPos << " / " << (len + lookAheadSz) << '\n';
-		//search for match
-		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
+	//do some lz77 encoding here
+	do {
+		//std::cout << "Bytes Left: " << bytesLeft << " " << winRight << std::endl;
+#ifdef BALLOON_DEBUG
+		if (currentByte % printThreshold == 0) {
+			std::cout << "Compressed: [" << currentByte << " / " << sz << "] \n";
+			std::cout << "Map Sz: " << hashTable.size() << "\n";
+		}
+#endif
 
-		do {
-			//search for a match
-			lmatches = matches;
-			matches = searchBuffer(window, winSz, window + storeSz, matchLength, INT_MAX, 256, storeSz);
+		fsz++;
+		//shiftWindow(window, winSz, hashTable, 1); //shift over window
+		//fillWindow(window, winSz, bytes, sz - currentByte, 1, readPos, currentByte);
 
-			//look for le match
-			if (matches.size() <= 0) {
-				matches = lmatches;
-				break;
+
+		//win shift but it's actually fast
+		window += shiftAmount; //goofy pointer manipulation
+		bytesLeft -= shiftAmount; //shift some counters around
+		currentByte += shiftAmount;
+		if (winLeft < readPos)
+			winLeft++;
+
+		hashOffset += shiftAmount;
+		shiftAmount = 1;
+
+		if (hashOffset % winSz == 0 && hashOffset > 1)
+			flushHash(hashTable, hashOffset);
+		//
+
+		if (currentByte < 3) {
+			res->rStream.push_back(*window);
+			fsz++;
+			continue;
+		}
+
+		//add hash to table
+		prevHash = 0;
+		insertStr.assign((char*)window, 3);
+		//std::cout << insertStr << " " << prevHash << " " << readPos << std::endl;
+		//INSERT_HASH(hashTable, insertStr, readPos + hashOffset, prevHash);
+
+		i64* htv = &hashTable[insertStr];
+		prevHash = *htv;
+		*htv = readPos + hashOffset;
+
+		prevHash -= hashOffset;
+
+		if (prevHash > 0) {
+			prevHash--;
+			//std::cout << "Match: " << prevHash << " " << readPos << std::endl;
+			//std::cout << window - (readPos - prevHash) << std::endl;
+			size_t _bestMatch = longest_match(window - (readPos - prevHash), window, MAX_MATCH);
+
+			if (_bestMatch <= 3) {
+				rStream.push_back(*window);
+				continue;
 			}
-			//std::cout << "BEST MATCH: " << bestMatch << "  " << window << "  " << window + storeSz << '\n';
-			//set new best match if one is found
-			bestMatch = matchLength;
 
-		} while (matchLength++);
+			//
+			i32 dist = readPos - _bestMatch,
+				matchLen = _bestMatch;
 
-		//determine whether or not there is a back reference
-		if (bestMatch >= LZ77_MIN_MATCH && matches.size() > 0) {
-			i32 match = matches[0],
-				dist = readPos - match,
-				matchLen = bestMatch;
 
-			//now encode match
+			//add back reference
+			i32 lenIdx = lz77_get_len_idx(_bestMatch);
+				dist = readPos - prevHash;
 
-#ifdef LZ77_TESTING
-			std::string dStr = std::to_string(dist), lStr = std::to_string(matchLen);
-
-			res.push_back('<');
-			for (i32 i = 0; i < dStr.length(); i++)
-				res.push_back(dStr[i]);
-			res.push_back(',');
-			for (i32 i = 0; i < lStr.length(); i++)
-				res.push_back(lStr[i]);
-			res.push_back('>');
-#else
-			//get length match index
-			i32 lenIdx = lz77_get_len_idx(matchLen);
+				std::cout << "Len: " << _bestMatch << " Dist: " << dist << std::endl;
 
 			//get distance match
 			i32 distIdx = lz77_get_dist_idx(dist);
 
-			distanceIdxs.push_back(res.size()); //add distance index
+			distanceIdxs.push_back(res->rStream.size()); //add distance index
 			distCounts[distIdx]++; //increase distance count for le distance tree
 
 			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
-			res.push_back(
-				(257 + lenIdx) |   //12 bits
+			res->rStream.push_back(
+				((257 + lenIdx)) |   //12 bits
 				(distIdx << 12) |  //4 bits
-				((matchLen - LengthBase[lenIdx]) << 16) | //4 bits
+				((_bestMatch - LengthBase[lenIdx]) << 16) | //4 bits
 				((dist - DistanceBase[distIdx]) << 20)       //4 bits
 			);
-#endif
 
-			winShift = matchLen;
+			res->charCounts[257 + lenIdx]++;
+
+			//some stuff to prepare for next itneration
+			shiftAmount = _bestMatch;
+			fsz += 2;
+			continue;
 		}
-		//just add current character if no match is found
-		else
-			res.push_back(window[readPos]);
+		else {
+			res->charCounts[*window]++;
+			res->rStream.push_back(*window);
+		}
 
-		//std::cout << "CHAR: " << window[readPos] << std::endl;
-		//shift look window
-		//printWindow(window, winSz, readPos);
-		ShiftWindow(window, winSz, winShift);
-		//printWindow(window, winSz, readPos);
-		//add new char to le window
-		do {
-			if (bPos < len)
-				window[winSz - winShift] = bytes[bPos++];
-			else
-				bPos++;
-		} while (--winShift>0);
+		//if (currentByte % printThreshold == 0)
+			//std::cout << "Compressed: [" << currentByte  << " / " <<  sz << "]" << std::endl;
+	} while (currentByte < sz);
 
-		//printWindow(window, winSz, readPos);
-
-		winShift = 1;
-	}
+	res->distTree = _distTree;
 
 	//create distance tree
 	if (_distTree == nullptr) {
 		HuffmanTreeNode* bdTree = GenerateBaseTree(distCounts, nDists);
 
 		if (bdTree != nullptr) {
-			distTree = CovnertTreeToCanonical(bdTree, nDists);
+			res->distTree = CovnertTreeToCanonical(bdTree, nDists);
 			FreeTree(bdTree);
 
 			//distance tree codes
-			GenerateCodeTable(distTree, 30);
+			GenerateCodeTable(res->distTree, 30);
 		}
 	}
 
-	//create bitstream
-	BitStream rStream = BitStream(0xff);
+#ifdef BALLOON_DEBUG
+	std::cout << "Compression Ratio: " << (float)fsz / (float)sz << std::endl;
+#endif
 
-	//std::cout << "Generating Byte Result..." << std::endl;
-	std::cout << "Generating Byte Stream..." << std::endl;
+	delete[] distCounts;
 
-	if (distTree)
-		GenerateLz77Stream(rStream, res, distTree);
-	else {
-		delete[] rStream.bytes;
-
-		return BitStream(res.data(), res.size());
-	}
-
-	//return le result
-	return rStream;
-}
-
-u32 InsertStrIntoHash(const i32 strPos, u32* hashTable, u32* prev, u32& cHash, char* window, size_t winSz, hashInfo hInf) {
-	UPDATE_HASH(cHash, window[strPos + (LZ77_MIN_MATCH - 1)], hInf);
-	u32 res = prev[strPos & (winSz - 1)] = hashTable[cHash]; //basically return previous hash and update current hash with new :3
-	hashTable[cHash] = strPos;
 	return res;
-}
-
-BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTreeNode* _distTree = nullptr) {
-	lookAheadSz = MIN(len, lookAheadSz);
-
-	//restult bytes
-	std::vector<u32> res;
-
-	//constants and some vars
-	const i32 winSz = 1 << WINDOW_BITS;
-	const i32 storeSz = winSz - lookAheadSz;
-	const i32 readPos = storeSz;
-	i32 bPos = 0, winShift = 1;
-
-	//sliding window
-	char* window = new char[winSz];
-
-	ZeroMem(window, winSz); // clear sliding window
-
-	//initial population of window
-	for (i32 i = 0; i < lookAheadSz; i++)
-		window[storeSz + i] = bytes[bPos++];
-
-	//printWindow(window, winSz, readPos);
-
-	//found matches
-	std::vector<i32> matches, lmatches, distanceIdxs;
-
-	//distance tree
-	HuffmanTreeNode* distTree = nullptr;
-	if (_distTree != nullptr) distTree = _distTree;
-
-	u32* distCounts = new u32[nDists];
-	ZeroMem(distCounts, nDists);
-
-	//hash stuff
-	hashInfo hInf = hashInfo(MEM_LEVEL);
-
-	u32* hashTable = new u32[hInf.hSz];
-	u32* prev = new u32[winSz];
-	u32 cHash = NULL;
-
-	//parse everything
-	while (bPos < len + lookAheadSz) {
-		//if (bPos % 2048 == 0)
-			//std::cout << "Encoding Symbol: " << bPos << " / " << (len + lookAheadSz) << '\n';
-		//search for match
-		i32 matchLength = LZ77_MIN_MATCH, bestMatch = 0;
-
-		u32 head = NULL;
-		//head = InsertStrIntoHash(readPos, hashTable, prev, cHash, window, winSz, hInf);
-
-		//determine whether or not there is a back reference
-		if (bestMatch >= LZ77_MIN_MATCH && matches.size() > 0) {
-			i32 match = matches[0],
-				dist = readPos - match,
-				matchLen = bestMatch;
-
-			//now encode match
-
-#ifdef LZ77_TESTING
-			std::string dStr = std::to_string(dist), lStr = std::to_string(matchLen);
-
-			res.push_back('<');
-			for (i32 i = 0; i < dStr.length(); i++)
-				res.push_back(dStr[i]);
-			res.push_back(',');
-			for (i32 i = 0; i < lStr.length(); i++)
-				res.push_back(lStr[i]);
-			res.push_back('>');
-#else
-			//get length match index
-			i32 lenIdx = lz77_get_len_idx(matchLen);
-
-			//get distance match
-			i32 distIdx = lz77_get_dist_idx(dist);
-
-			distanceIdxs.push_back(res.size()); //add distance index
-			distCounts[distIdx]++; //increase distance count for le distance tree
-
-			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
-			res.push_back(
-				(257 + lenIdx) |   //12 bits
-				(distIdx << 12) |  //4 bits
-				((matchLen - LengthBase[lenIdx]) << 16) | //4 bits
-				((dist - DistanceBase[distIdx]) << 20)       //4 bits
-			);
-#endif
-
-			winShift = matchLen;
-		}
-		//just add current character if no match is found
-		else
-			res.push_back(window[readPos]);
-
-		//std::cout << "CHAR: " << window[readPos] << std::endl;
-		//shift look window
-		//printWindow(window, winSz, readPos);
-		ShiftWindow(window, winSz, winShift);
-		//printWindow(window, winSz, readPos);
-		//add new char to le window
-		do {
-			if (bPos < len)
-				window[winSz - winShift] = bytes[bPos++];
-			else
-				bPos++;
-		} while (--winShift > 0);
-
-		//printWindow(window, winSz, readPos);
-
-		winShift = 1;
-	}
-
-	//create distance tree
-	if (_distTree == nullptr) {
-		HuffmanTreeNode* bdTree = GenerateBaseTree(distCounts, nDists);
-
-		if (bdTree != nullptr) {
-			distTree = CovnertTreeToCanonical(bdTree, nDists);
-			FreeTree(bdTree);
-
-			//distance tree codes
-			GenerateCodeTable(distTree, 30);
-		}
-	}
-
-	//create bitstream
-	BitStream rStream = BitStream(0xff);
-
-	//std::cout << "Generating Byte Result..." << std::endl;
-	std::cout << "Generating Byte Stream..." << std::endl;
-
-	if (distTree)
-		GenerateLz77Stream(rStream, res, distTree);
-	else {
-		delete[] rStream.bytes;
-
-		return BitStream(res.data(), res.size());
-	}
-
-	//return le result
-	return rStream;
 }
 
 /**
@@ -1349,16 +1104,52 @@ BitStream lz77_encode(u32* bytes, size_t len, i32 lookAheadSz = 288, HuffmanTree
  * 
  */
 
-void Zlib::Deflate(u32* bytes, size_t len) {
+void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level) {
 	if (bytes == nullptr || len <= 0) return; //quick length check
 
 	//compress the data first
-	i32 lz77winSzBase = 0;
 	BitStream rStream = BitStream(0xff);
 
-	byte cmf = (0x08 << 4) | (lz77winSzBase & 3);
+	if (winBits > 15)
+		return;
 
+	//generate some of the fields
+	byte cmf = (0x08 << 4) | ((winBits-8) & 3);
+	byte flg = 0; //all the data is just going to be 0
 
+	flg = (cmf * 256) % 31; //to make sure the check sum is good
+
+	//write the header info
+	rStream.writeValue<byte>(cmf);
+	rStream.writeValue<byte>(flg);
+
+	//now compress the data
+	switch (level) {
+		//No compression
+		case 0: {
+			delete[] rStream.bytes;
+			rStream.asz = len;
+			rStream.sz = len;
+			rStream.bytes = new u32[len];
+			memcpy(rStream.bytes, bytes, len * sizeof(u32));
+			break;
+		}
+		//Huffman Only
+		case 1: {
+
+			break;
+		}
+		//lz77 and huffman
+		case 2: {
+			lz77_res* lzr = lz77_encode(bytes, len, winBits, 258);
+			break;
+		}
+		default: {
+			break;
+		}
+	}
+
+	
 }
 
 
@@ -1468,14 +1259,14 @@ void Huffman::DebugMain() {
 	for (i32 i = 0; i < len; i++)
 		uTestStr[i] = (u32)testStr[i];*/
 
-	size_t len = (1 << 24);
+	size_t len = (1 << 10);
 
-	u32* uTestStr = new u32[len];
+	byte* uTestStr = new byte[len];
 
 	srand(time(NULL));
 
 	for (size_t i = 0; i < len; i++)
-		uTestStr[i] = (u32)((rand()%74) + 48);
+		uTestStr[i] = (byte)((rand()%10) + 48);
 
 	/*std::vector<u32> lz77testRes = lz77_encode(uTestStr, len, 16, 32);
 
@@ -1485,13 +1276,12 @@ void Huffman::DebugMain() {
 
 	std::cout << std::endl;*/
 
-	BitStream lz77testRes = lz77_encode(uTestStr, len, 288);
 
-	for (int i = 0; i < lz77testRes.sz; i++) {
-		std::cout << (char)lz77testRes.bytes[i];
-	}
+	//for (int i = 0; i < lz77testRes.sz; i++) {
+		//std::cout << (int)lz77testRes.bytes[i] << " ";
+	//}
 
-	std::cout << std::endl;
+	//std::cout << std::endl;
 
-	std::cout << "Compression Sz: " << lz77testRes.sz << " " << len << "  |  " << ((float)lz77testRes.sz/ (float)len) << std::endl;
+	//std::cout << "Compression Sz: " << lz77testRes.sz << " " << len << "  |  " << ((float)lz77testRes.sz/ (float)len) << std::endl;
 }
