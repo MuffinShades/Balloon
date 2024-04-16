@@ -1104,6 +1104,8 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
  * 
  */
 
+#define DEFAULT_ALPHABET_SZ 288
+
 void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level) {
 	if (bytes == nullptr || len <= 0) return; //quick length check
 
@@ -1123,6 +1125,21 @@ void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level
 	rStream.writeValue<byte>(cmf);
 	rStream.writeValue<byte>(flg);
 
+	auto writeTrees = [](BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* distTree) {
+		i32 HLIT = litTree->alphabetSz - 257;
+		i32 HDIST = distTree->alphabetSz - 1;
+
+		u32* treeBitCounts = new u32[30];
+
+		i32 i;
+
+		for (i = 0; i++ < 30;)
+
+
+
+		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(treeBitCounts, 30);
+	};
+
 	//now compress the data
 	switch (level) {
 		//No compression
@@ -1136,6 +1153,9 @@ void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level
 		}
 		//Huffman Only
 		case 1: {
+			u32* charCounts = GetCharCount(bytes, len, DEFAULT_ALPHABET_SZ);
+			HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
+			HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, DEFAULT_ALPHABET_SZ);
 
 			break;
 		}
