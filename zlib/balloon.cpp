@@ -1,3 +1,15 @@
+/**
+ * 
+ * Program written by muffinshades
+ * 
+ * Copyright (c) 2024 muffinshades
+ *
+ * You can do what ever you want with the software but you must
+ * credit the author (muffinshades) with the original creation 
+ * of the software. Idk what else to put here lmao. 
+ * 
+ */
+
 #include "balloon.hpp"
 #include <algorithm>
 
@@ -900,7 +912,7 @@ void GenerateLz77Stream(BitStream& rStream, std::vector<u32>& res, HuffmanTreeNo
 				lenExtra = (lByte >> 0x10) & 0xf,
 				distExtra = (lByte >> 0x14) & 0xf;
 
-			std::cout << "Back Ref: " << lenIdx << " " << distIdx << " " << lenExtra << " " << distExtra << std::endl;
+			//std::cout << "Back Ref: " << lenIdx << " " << distIdx << " " << lenExtra << " " << distExtra << std::endl;
 
 			//construct back reference as bytes
 			rStream.writeValue<byte>(lenIdx);
@@ -1035,7 +1047,7 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
 			i32 lenIdx = lz77_get_len_idx(_bestMatch);
 				dist = readPos - prevHash;
 
-				std::cout << "Len: " << _bestMatch << " Dist: " << dist << std::endl;
+				//std::cout << "Len: " << _bestMatch << " Dist: " << dist << std::endl;
 
 			//get distance match
 			i32 distIdx = lz77_get_dist_idx(dist);
@@ -1099,6 +1111,12 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
  * 
  */
 
+#define RLE_Z_MASK 0b1111111
+#define RLE_Z_BASE 11
+#define RLE_L1_MASK 0b11
+#define RLE_L2_MASK 0b111
+#define RLE_L_BASE 3
+
 void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_t winBits, const int level, bool finalBlock = false) {
 	const int bFinal = finalBlock & 0x01;
 	int bType = 0;
@@ -1114,16 +1132,89 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		i32 HLIT = litTree->alphabetSz - 257;
 		i32 HDIST = distTree->alphabetSz - 1;
 
-		u32* treeBitCounts = new u32[30];
+		u32* treeBitCounts = new u32[19];
+		
+		u32* precompressedCodeLengths = new u32[litTree->alphabetSz + distTree->alphabetSz];
 
+		//get codes
+		u32* litCodes = getTreeBitLens(litTree, litTree->alphabetSz);
+		u32* distCodes = getTreeBitLens(distTree, distTree->alphabetSz);
+
+		//do some stuff
+		memcpy(precompressedCodeLengths, litCodes, litTree->alphabetSz); //3 bits per code
+		memcpy(precompressedCodeLengths + litTree->alphabetSz, distCodes, distTree->alphabetSz);
+
+		//now compress code lengths
+		const int lengthMask = 0x7; //0b111
+
+		std::vector<byte> compressedLengths;
+
+		u32* current = precompressedCodeLengths;
+		u32* end = precompressedCodeLengths + (litTree->alphabetSz + distTree->alphabetSz);
+
+		//run length encoding
+		do {
+			//0 back ref stuff
+			if (*current == 0) {
+				u32* temp = current;
+
+				do {} while (*temp++ == 0 && current - temp < (RLE_Z_BASE + RLE_Z_MASK));
+
+				size_t copyLen = current - temp;
+
+				if (copyLen >= RLE_Z_BASE) {
+					//back reference
+					compressedLengths.push_back(18);
+					compressedLengths.push_back((copyLen - RLE_Z_BASE) & RLE_Z_MASK);
+				}
+				else {
+					current += copyLen;
+					while (copyLen-- > 0)
+						compressedLengths.push_back(0);
+				}
+			}
+			//else just do normal run length encoding
+			else {
+				u32* temp = current;
+
+				do {} while (*temp++ == *current && current - temp < (RLE_L_BASE + RLE_L2_MASK));
+
+				size_t copyLen = current - temp;
+
+				if (copyLen >= RLE_L_BASE) {
+					//back reference
+					//ll 1
+					if (copyLen > RLE_L_BASE + RLE_L1_MASK) {
+						compressedLengths.push_back(*current);
+						compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L1_MASK);
+						current += copyLen;
+					}
+					//ll 2
+					else {
+						compressedLengths.push_back(*current);
+						compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L2_MASK);
+						current += copyLen;
+					}
+				}
+				//just add stuff ya know
+				else {
+					current += copyLen;
+					byte tCopy = *current;
+					while (copyLen-- > 0)
+						compressedLengths.push_back(tCopy);
+				}
+			}
+		} while (current < end);
+
+		//generate tree tree yeah the tree tree
+		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(treeBitCounts, 19);
+
+		//generate the final tree stuff
 		i32 i;
 
-		for (i = 0; i++ < 30;) {
+		for (i = 0; i++ < 19;) {
 
 		}
-
-
-		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(treeBitCounts, 30);
 	};
 
 	//write block header
