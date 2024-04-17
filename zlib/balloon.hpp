@@ -60,7 +60,7 @@ struct CharCount {
 //byte pointer with length
 struct RawBytes {
 	u32* bytes = nullptr;
-	i32 len = 0;
+	size_t len = 0;
 	void CopyToBuffer(RawBytes* buffer);
 	void free() {
 		delete[] this->bytes;

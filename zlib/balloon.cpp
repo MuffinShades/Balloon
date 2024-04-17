@@ -727,7 +727,7 @@ Params:
 
 */
 
-HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSize) {
+HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSize, bool deleteOld = false) {
 	//get bit lengths of each code
 	u32* bitLens = getTreeBitLens(tree, alphabetSize);
 
@@ -758,6 +758,9 @@ HuffmanTreeNode* CovnertTreeToCanonical(HuffmanTreeNode* tree, size_t alphabetSi
 
 	//free memory and return new tree
 	delete[] bitLens;
+
+	if (deleteOld)
+		delete[] tree;
 
 	return cTree;
 }
@@ -1105,6 +1108,41 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
 
 #define DEFAULT_ALPHABET_SZ 288
 
+template<typename _Ty> struct arr_container {
+	_Ty* dat;
+	size_t sz;
+};
+
+//function to remove the zeros at the end of an array
+template<typename _T> arr_container<_T> clipArr(_T* dat, size_t sz) {
+	const _T* end = dat + sz;
+
+	_T* cur = nullptr;
+	_T* last = nullptr;
+	
+	do {
+		if (*cur == 0) {
+			do {
+				last = cur;
+			} while (*++cur == 0 cur < end);
+		}
+		else
+			cur++;
+	} while (cur < end);
+
+	if (!last)
+		return dat;
+	
+	size_t sz = last - cur;
+	arr_container<_T> res;
+	res.dat = new _T[sz];
+	ZeroMem(res.dat, sz);
+	memcpy(res.dat, dat, sizeof(_T) * sz);
+	res.sz = sz:
+	delete[] dat;
+	return res;
+}
+
 /**
  * 
  * Function to add deflate blocks deflate blocks
@@ -1129,9 +1167,14 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 
 
 	auto writeTrees = [](BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* distTree) {
+		//so some clipping and other stuff
+
+
+		//now get some header info
 		i32 HLIT = litTree->alphabetSz - 257;
 		i32 HDIST = distTree->alphabetSz - 1;
 
+		//allocate some memory ill probably forget to free later lol
 		u32* treeBitCounts = new u32[19];
 		
 		u32* precompressedCodeLengths = new u32[litTree->alphabetSz + distTree->alphabetSz];
@@ -1147,7 +1190,7 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		//now compress code lengths
 		const int lengthMask = 0x7; //0b111
 
-		std::vector<byte> compressedLengths;
+		std::vector<u32> compressedLengths;
 
 		u32* current = precompressedCodeLengths;
 		u32* end = precompressedCodeLengths + (litTree->alphabetSz + distTree->alphabetSz);
@@ -1207,14 +1250,29 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		} while (current < end);
 
 		//generate tree tree yeah the tree tree
-		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(treeBitCounts, 19);
+		u32* codeCounts = GetCharCount(compressedLengths.data(), compressedLengths.size(), 19);
 
-		//generate the final tree stuff
-		i32 i;
+		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(codeCounts, 19);
+		codeLengthTree = CovnertTreeToCanonical(codeLengthTree, 19, true);
 
-		for (i = 0; i++ < 19;) {
+		//write bit counts for code length tree
+		arr_container<u32> ccClip = clipArr(codeCounts, 19);
 
-		}
+		u32* cc = ccClip.dat;
+		u32 HCLEN = ccClip.sz;
+
+		//write tree header
+		WriteVBitsToStream(stream, HLIT, 5);
+		WriteVBitsToStream(stream, HDIST, 5);
+		WriteVBitsToStream(stream, HCLEN, 4);
+
+		//write the code lengths into the tree thingy
+		do {
+			size_t i = cc - ccClip.dat;
+			WriteVBitsToStream(stream, *(ccClip.dat + CodeLengthCodesOrder[i]), 3);
+		} while (cc++ != ccClip.dat + ccClip.sz); 
+
+		//now write the other 2 trees
 	};
 
 	//write block header
