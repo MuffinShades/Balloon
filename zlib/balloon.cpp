@@ -751,8 +751,8 @@ ZResult Zlib::Inflate(u32* bytes, size_t len) {
 
 	BData iDat = _Inflate(stream);
 
-	res.bytes = new char[iDat.len];
-	memcpy(res.bytes, iDat.bytes, iDat.len);
+	res.bytes = new u32[iDat.len];
+	memcpy(res.bytes, iDat.bytes, iDat.len * sizeof(u32));
 	delete[] iDat.bytes;
 	res.len = iDat.len;
 
