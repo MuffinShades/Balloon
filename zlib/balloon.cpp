@@ -1673,7 +1673,7 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
  * 
  */
 
-void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level) {
+ZResult Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level) {
 	if (bytes == nullptr || len <= 0) return; //quick length check
 
 	//compress the data first
@@ -1692,9 +1692,24 @@ void Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level
 	rStream.writeValue<byte>(cmf);
 	rStream.writeValue<byte>(flg);
 
-	
+	u32* nBytes = new u32[len + 1];
+	memcpy(nBytes, bytes, len * sizeof(u32));
+	nBytes[len] = 0xff;
 
+	GenerateDeflateBlock(rStream, nBytes, len+1, winBits, level, true);
+
+	delete[] nBytes;
+
+	ZResult res;
+
+	rStream.clip();
+
+	res.bytes = rStream.bytes;
+	res.len = rStream.sz;
+	res.compressionLevel = level;
+	res.checkSum = 0xffffffff;
 	
+	return res;
 }
 
 

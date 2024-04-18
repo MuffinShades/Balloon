@@ -124,7 +124,7 @@ public:
 };
 
 struct ZResult {
-	char* bytes;
+	u32* bytes;
 	size_t len;
 	i32 compressionLevel, compressionMode;
 	u32 checkSum;
@@ -133,5 +133,5 @@ struct ZResult {
 class Zlib {
 public:
 	ZResult Inflate(u32* bytes, size_t len);
-	void Deflate(u32* bytes, size_t len, const int level);
+	ZResult Deflate(u32* bytes, size_t len, const size_t winBits, const int level)
 };
