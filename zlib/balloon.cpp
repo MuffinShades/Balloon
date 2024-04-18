@@ -1317,8 +1317,8 @@ template<typename _Ty> struct arr_container {
 };
 
 //function to remove the zeros at the end of an array
-template<typename _T> arr_container<_T> clipArr(_T* dat, size_t sz) {
-	const _T* end = dat + sz;
+template<typename _T> arr_container<_T> clipArr(_T* dat, size_t _sz) {
+	const _T* end = dat + _sz;
 
 	_T* cur = nullptr;
 	_T* last = nullptr;
@@ -1327,21 +1327,25 @@ template<typename _T> arr_container<_T> clipArr(_T* dat, size_t sz) {
 		if (*cur == 0) {
 			do {
 				last = cur;
-			} while (*++cur == 0 cur < end);
+			} while (*++cur == 0 && cur < end);
 		}
 		else
 			cur++;
 	} while (cur < end);
 
-	if (!last)
-		return dat;
+	if (!last) {
+		arr_container<_T> defRes;
+		defRes.dat = dat;
+		defRes.sz = _sz;
+		return defRes;
+	}
 	
 	size_t sz = last - cur;
 	arr_container<_T> res;
-	res.dat = new _T[sz];
-	ZeroMem(res.dat, sz);
-	memcpy(res.dat, dat, sizeof(_T) * sz);
-	res.sz = sz:
+	res.dat = new _T[_sz];
+	ZeroMem(res.dat, _sz);
+	memcpy(res.dat, dat, sizeof(_T) * _sz);
+	res.sz = _sz;
 	delete[] dat;
 	return res;
 }
@@ -1531,7 +1535,6 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* distTree = new HuffmanTreeNode;
-		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
 		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
 		distTree->alphabetSz = 30;
 
@@ -1569,7 +1572,6 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		u32* charCounts = GetCharCount(lzr->rStream.data(), lzr->rStream.size(), DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, DEFAULT_ALPHABET_SZ);
-		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
 		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
 		u32* distCodeLengths = getTreeBitLens(lzr->distTree, DEFAULT_ALPHABET_SZ);
 
@@ -1674,13 +1676,14 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
  */
 
 ZResult Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int level) {
-	if (bytes == nullptr || len <= 0) return; //quick length check
+	ZResult _znull;
+	if (bytes == nullptr || len <= 0) return _znull; //quick length check
 
 	//compress the data first
 	BitStream rStream = BitStream(0xff);
 
 	if (winBits > 15)
-		return;
+		return _znull;
 
 	//generate some of the fields
 	byte cmf = (0x08 << 4) | ((winBits-8) & 3);
