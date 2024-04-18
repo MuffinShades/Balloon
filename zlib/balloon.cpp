@@ -19,6 +19,204 @@
 #define MIN_MATCH 3
 #define MEM_LEVEL 8
 
+
+/**
+ *
+ * BitStream Functions
+ * 
+ * Deflate code starts after this
+ * 
+ */
+
+BitStream::BitStream(u32* bytes, size_t len) {
+	this->bytes = new u32[len];
+	memcpy(this->bytes, bytes, len * sizeof(u32));
+	this->bsz = len * 8;
+	this->sz = len;
+	this->asz = sz;
+	this->rPos = this->sz;
+}
+
+BitStream::BitStream(size_t len) {
+	assert(len > 0);
+	this->bytes = new u32[len];
+	memset(this->bytes, 0, len * sizeof(u32));
+	this->bsz = len * 8;
+	this->asz = len;
+	this->rPos = 0;
+}
+
+i32 BitStream::readBit() {
+	if (this->lBit <= 0) {
+		//std::cout << "Bit Pos: " << this->pos << " " << this->sz << std::endl;
+		assert(this->pos < this->bsz&& this->pos >= 0);
+
+		//advance a byte
+		this->cByte = this->bytes[this->pos];
+		this->pos++;
+		this->lBit = 8;
+	}
+
+	this->lBit--;
+
+	//extract le bit
+	i32 bit = this->cByte & 1; //extract first bit
+	this->cByte >>= 1; //advance a bit
+	return bit; //return extracted bit
+}
+
+i32 BitStream::readByte() {
+	this->lBit = 0;
+	return this->bytes[this->pos++];
+}
+
+i32 BitStream::readNBits(i32 nBits) {
+	i32 r = 0, c = 0;
+	while (c < nBits)
+		r |= (this->readBit() << (c++));
+	return r;
+}
+
+i32 BitStream::tell() {
+	return this->pos;
+}
+
+i32 BitStream::tellw() {
+	return this->rPos;
+}
+
+void BitStream::seekw(i32 wPos) {
+	assert(wPos >= 0 && wPos < this->asz);
+	this->rPos = wPos;
+}
+
+void BitStream::seek(i32 pos) {
+	assert(pos >= 0 && pos < this->asz);
+	this->pos = pos;
+}
+
+void BitStream::checkWritePosition() {
+	if (this->rPos == this->asz)
+		this->allocNewChunk();
+}
+
+i32 BitStream::readValue(size_t size) {
+	i32 r = 0;
+	for (size_t i = 0; i < size; i++)
+		r |= (this->readByte() << (i * 8));
+
+	return r;
+}
+
+u32* BitStream::bitsToBytes(u32* bits, size_t len) {
+	u32* res = new u32[ceil((float)len / 8.0f)];
+
+	i32 bCollect = 0, iBit = 0, cByte = 0;
+	for (i32 i = len - 1; i >= 0; i--) {
+		bCollect |= (bits[i]) << iBit;
+		iBit++;
+		if (iBit >= 8) {
+			res[cByte++] = bCollect;
+			bCollect = 0;
+			iBit = 0;
+		}
+	}
+
+	if (iBit > 0) res[cByte] = bCollect;
+
+	return res;
+}
+
+u32* BitStream::bitsToBytes(u32 bits, size_t len) {
+	u32* res = new u32[ceil((float)len / 8.0f)];
+
+	i32 bCollect = 0, iBit = 0, cByte = 0;
+	for (i32 i = len - 1; i >= 0; i--) {
+		bCollect |= ((bits >> i) & 1) << iBit;
+		iBit++;
+		if (iBit >= 8) {
+			res[cByte++] = bCollect;
+			bCollect = 0;
+			iBit = 0;
+		}
+	}
+
+	if (iBit > 0) res[cByte] = bCollect;
+
+	return res;
+}
+
+void BitStream::writeBit(u32 bit) {
+
+	//advance a byte if were out of range
+	if (this->rBit <= 0) {
+		//std::cout << "ALLOC " << this->sz << std::endl;
+		this->rBit = 8;
+		this->rPos++;
+		this->sz++;
+		this->checkWritePosition();
+	}
+	//std::cout << "Bit Write: " << (bit & 1) << std::endl;
+	//std::cout << "Alloc done" << std::endl;
+	//now write bit
+	this->bytes[this->rPos] <<= 1;
+	this->bytes[this->rPos] |= (bit & 1); //& with 1 to just get first bit
+	//std::cout << this->rPos << " " << this->rBit << "  " << this->sz << std::endl;
+	this->rBit--;
+}
+
+void BitStream::writeNBits(u32* bits, size_t len) {
+	for (size_t i = 0; i < len; i++)
+		this->writeBit(bits[i]);
+}
+
+template<typename _T> void BitStream::writeValue(_T val) {
+	size_t vsz = sizeof(_T) * 8;
+
+	for (i32 i = vsz - 1; i >= 0; i--)
+		this->writeBit((val >> i) & 1);
+}
+
+void BitStream::allocNewChunk() {
+	u32* tBytes = new u32[this->asz];
+	u32 osz = this->asz;
+	memcpy(tBytes, this->bytes, this->asz);
+	this->asz += 256;
+	delete[] this->bytes;
+	this->bytes = new u32[this->asz];
+	memset(this->bytes, 0, sizeof(u32) * this->asz);
+	memcpy(this->bytes, tBytes, osz);
+	delete[] tBytes;
+}
+
+void BitStream::clip() {
+	u32* tBytes = new u32[this->asz];
+	u32 osz = this->asz;
+	memcpy(tBytes, this->bytes, this->asz);
+	this->asz = this->sz;
+	delete[] this->bytes;
+	this->bytes = new u32[this->asz];
+	memset(this->bytes, 0, sizeof(u32) * this->asz);
+	memcpy(this->bytes, tBytes, osz);
+	delete[] tBytes;
+}
+
+void BitStream::calloc(size_t sz) {
+	if (this->bytes)
+		delete[] this->bytes;
+
+	this->bytes = new u32[sz];
+
+	this->asz = sz;
+	this->bsz = sz * 8;
+	this->pos = this->rPos = this->lBit = this->cByte = this->sz = 0;
+
+	i32 pos = 0, rPos = 0;
+	i32 lBit = 0;
+	u32 cByte = 0;
+	u32 rBit = 8;
+}
+
 //#define LZ77_TESTING
 
 template<typename _Ty> void ZeroMem(_Ty* mem, size_t len) {
@@ -1059,12 +1257,17 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
 			distCounts[distIdx]++; //increase distance count for le distance tree
 
 			//add some basic info becuase well construct the rest of the stuff when constructing the bitstream
-			res->rStream.push_back(
+			/*res->rStream.push_back(
 				((257 + lenIdx)) |   //12 bits
-				(distIdx << 12) |  //4 bits
-				((_bestMatch - LengthBase[lenIdx]) << 16) | //4 bits
-				((dist - DistanceBase[distIdx]) << 20)       //4 bits
-			);
+				(distIdx << 12) |  //6 bits
+				(((_bestMatch - LengthBase[lenIdx]) << 16) & 0xff) | //8 bits
+				(((dist - DistanceBase[distIdx]) << 24) & 0xff)       //8 bits
+			);*/
+
+			res->rStream.push_back(257 + lenIdx);
+			res->rStream.push_back(distIdx);
+			res->rStream.push_back(_bestMatch - LengthBase[lenIdx]);
+			res->rStream.push_back(dist - DistanceBase[distIdx]);
 
 			res->charCounts[257 + lenIdx]++;
 
@@ -1143,6 +1346,20 @@ template<typename _T> arr_container<_T> clipArr(_T* dat, size_t sz) {
 	return res;
 }
 
+const uint32_t MOD_ADLER = 65521;
+
+#define ADLER32_BASE 1
+
+void computeAdler32CheckSum(u32& current, byte dat) {
+	u32 a = current & 0xffff;
+	u32 b = (current >> 16) & 0xffff;
+
+	a = (a + dat) % MOD_ADLER;
+	b = (b + a) % MOD_ADLER;
+
+	current = (b << 16) | a;
+}
+
 /**
  * 
  * Function to add deflate blocks deflate blocks
@@ -1167,21 +1384,22 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 
 
 	auto writeTrees = [](BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* distTree) {
-		//so some clipping and other stuff
+		//get codes
+		u32* litCodes = getTreeBitLens(litTree, litTree->alphabetSz);
+		u32* distCodes = getTreeBitLens(distTree, distTree->alphabetSz);
 
+		//so some clipping and other stuff
+		arr_container<u32> litClip = clipArr(litCodes, litTree->alphabetSz);
+		arr_container<u32> distClip = clipArr(distCodes, distTree->alphabetSz);
 
 		//now get some header info
-		i32 HLIT = litTree->alphabetSz - 257;
-		i32 HDIST = distTree->alphabetSz - 1;
+		i32 HLIT = litClip.sz - 257;
+		i32 HDIST = distClip.sz - 1;
 
 		//allocate some memory ill probably forget to free later lol
 		u32* treeBitCounts = new u32[19];
 		
 		u32* precompressedCodeLengths = new u32[litTree->alphabetSz + distTree->alphabetSz];
-
-		//get codes
-		u32* litCodes = getTreeBitLens(litTree, litTree->alphabetSz);
-		u32* distCodes = getTreeBitLens(distTree, distTree->alphabetSz);
 
 		//do some stuff
 		memcpy(precompressedCodeLengths, litCodes, litTree->alphabetSz); //3 bits per code
@@ -1255,6 +1473,8 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		HuffmanTreeNode* codeLengthTree = GenerateBaseTree(codeCounts, 19);
 		codeLengthTree = CovnertTreeToCanonical(codeLengthTree, 19, true);
 
+		u32* codeTreeBitLen = getTreeBitLens(codeLengthTree, 19);
+
 		//write bit counts for code length tree
 		arr_container<u32> ccClip = clipArr(codeCounts, 19);
 
@@ -1272,7 +1492,21 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 			WriteVBitsToStream(stream, *(ccClip.dat + CodeLengthCodesOrder[i]), 3);
 		} while (cc++ != ccClip.dat + ccClip.sz); 
 
-		//now write the other 2 trees
+		//final step, encode+write the other 2 trees to the stream
+		u32 sym = NULL;
+		for (i32 i = 0; i < compressedLengths.size(); i++) {
+			sym = compressedLengths[i];
+			WriteVBitsToStream(
+				stream,
+				EncodeSymbol(
+					sym,
+					codeLengthTree
+				),
+				codeTreeBitLen[compressedLengths[i]]
+			);
+		}
+
+		delete[] codeTreeBitLen, litCodes, distCodes;
 	};
 
 	//write block header
@@ -1296,12 +1530,128 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		u32* charCounts = GetCharCount(bytes, len, DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, DEFAULT_ALPHABET_SZ);
+		HuffmanTreeNode* distTree = new HuffmanTreeNode;
+		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
+		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
+		distTree->alphabetSz = 30;
 
+		//write the trees
+		writeTrees(stream, tree, distTree);
+
+		u32 checkSum = ADLER32_BASE;
+
+		//now write all the bytes
+		for (i32 i = 0; i < len; i++) {
+			//check sum
+			computeAdler32CheckSum(checkSum, bytes[i]);
+
+			//continue to write stuff
+			WriteVBitsToStream(
+				stream,
+				EncodeSymbol(bytes[i], tree),
+				treeCodeLengths[bytes[i]]
+			);
+		}
+
+		//add check sum
+		stream.writeValue<u32>(checkSum);
+
+		//memory clean up
+		delete[] baseTree, tree, distTree, treeCodeLengths, charCounts;
+
+		//we done :D
 		break;
 	}
 		  //lz77 and huffman
 	case 2: {
 		lz77_res* lzr = lz77_encode(bytes, len, winBits, 258);
+
+		u32* charCounts = GetCharCount(lzr->rStream.data(), lzr->rStream.size(), DEFAULT_ALPHABET_SZ);
+		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
+		HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, DEFAULT_ALPHABET_SZ);
+		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
+		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
+		u32* distCodeLengths = getTreeBitLens(lzr->distTree, DEFAULT_ALPHABET_SZ);
+
+		//write the trees
+		writeTrees(stream, tree, lzr->distTree);
+
+		u32 checkSum = ADLER32_BASE;
+
+		//now write all the bytes
+		for (i32 i = 0; i < lzr->rStream.size(); i++) {
+			u32 sym = lzr->rStream[i];
+			//check sum
+			computeAdler32CheckSum(checkSum, bytes[i]);
+
+			/*((257 + lenIdx)) |   //12 bits
+				(distIdx << 12) |  //4 bits
+				((_bestMatch - LengthBase[lenIdx]) << 16) | //4 bits
+				((dist - DistanceBase[distIdx]) << 20)       //4 bits*/
+
+			/*
+			
+			res->rStream.push_back(257 + lenIdx);
+			res->rStream.push_back(distIdx);
+			res->rStream.push_back(_bestMatch - LengthBase[lenIdx]);
+			res->rStream.push_back(dist - DistanceBase[distIdx]);
+			
+			*/
+
+
+			if (sym >= 257) {
+
+				//continue to write stuff
+				//length base
+				WriteVBitsToStream(
+					stream,
+					EncodeSymbol(sym & 0xfff, tree),
+					treeCodeLengths[sym]
+				);
+
+				//back reference
+				i32 distIdx = lzr->rStream[++i], 
+					lengthExtra = lzr->rStream[++i], 
+					distExtra = lzr->rStream[++i];
+
+				//length extra
+				WriteVBitsToStream(
+					stream,
+					lengthExtra,
+					LengthExtraBits[(sym & 0xfff) - 257]
+				);
+
+				//distance base
+				WriteVBitsToStream(
+					stream,
+					EncodeSymbol(distIdx, lzr->distTree),
+					distCodeLengths[distIdx]
+				);
+
+				//distance extra
+				WriteVBitsToStream(
+					stream,
+					distExtra,
+					DistanceExtraBits[distIdx]
+				);
+			}
+			else {
+				//continue to write stuff
+				WriteVBitsToStream(
+					stream,
+					EncodeSymbol(sym, tree),
+					treeCodeLengths[sym]
+				);
+			}
+		}
+
+		//add check sum
+		stream.writeValue<u32>(checkSum);
+
+		//memory management
+		delete[] baseTree, tree, treeCodeLengths, charCounts;
+
+		//and we done :D again ;-;
 		break;
 	}
 	default: {
