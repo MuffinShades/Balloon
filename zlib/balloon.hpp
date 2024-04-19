@@ -132,6 +132,6 @@ struct ZResult {
 
 class Zlib {
 public:
-	ZResult Inflate(u32* bytes, size_t len);
-	ZResult Deflate(u32* bytes, size_t len, const size_t winBits, const int level);
+	static ZResult Inflate(u32* bytes, size_t len);
+	static ZResult Deflate(u32* bytes, size_t len, const size_t winBits, const int level);
 };
