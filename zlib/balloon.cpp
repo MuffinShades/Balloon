@@ -71,9 +71,14 @@ i32 BitStream::readByte() {
 }
 
 i32 BitStream::readNBits(i32 nBits) {
-	i32 r = 0, c = 0;
-	while (c < nBits)
-		r |= (this->readBit() << (c++));
+	u32 r = 0, c = 0;
+	std::cout << "R:" << r << std::endl;
+	while (c < nBits) {
+		i32 bit = this->readBit() & 1;
+		std::cout << "R2:" << r << "  " << c << " " << bit << std::endl;
+		r |= (bit << (c++));
+		std::cout << "Read Bit: " << ((r & (c - 1))) << " " << r << std::endl;
+	}
 	return r;
 }
 
@@ -96,7 +101,7 @@ void BitStream::seek(i32 pos) {
 }
 
 void BitStream::checkWritePosition() {
-	if (this->rPos == this->asz)
+	if (this->rPos >= this->asz)
 		this->allocNewChunk();
 }
 
@@ -147,6 +152,12 @@ u32* BitStream::bitsToBytes(u32 bits, size_t len) {
 }
 
 void BitStream::writeBit(u32 bit) {
+	//std::cout << "Bit Write: " << (bit & 1) << std::endl;
+	//std::cout << "Alloc done" << std::endl;
+	//now write bit
+	this->bytes[this->rPos] |= (bit & 1) << (8 - this->rBit); //& with 1 to just get first bit
+	//std::cout << "Bit Write: " << this->rPos << " " << (8-this->rBit) << "  " << bit << std::endl;
+	this->rBit--;
 
 	//advance a byte if were out of range
 	if (this->rBit <= 0) {
@@ -156,13 +167,6 @@ void BitStream::writeBit(u32 bit) {
 		this->sz++;
 		this->checkWritePosition();
 	}
-	//std::cout << "Bit Write: " << (bit & 1) << std::endl;
-	//std::cout << "Alloc done" << std::endl;
-	//now write bit
-	this->bytes[this->rPos] <<= 1;
-	this->bytes[this->rPos] |= (bit & 1); //& with 1 to just get first bit
-	//std::cout << this->rPos << " " << this->rBit << "  " << this->sz << std::endl;
-	this->rBit--;
 }
 
 void BitStream::writeNBits(u32* bits, size_t len) {
@@ -178,15 +182,16 @@ template<typename _T> void BitStream::writeValue(_T val) {
 }
 
 void BitStream::allocNewChunk() {
-	u32* tBytes = new u32[this->asz];
-	u32 osz = this->asz;
-	memcpy(tBytes, this->bytes, this->asz);
 	this->asz += 256;
+	u32* tBytes = new u32[this->asz];
+	memset(tBytes, 0, sizeof(u32) * this->asz);
+	memcpy(tBytes, this->bytes, sizeof(u32) * this->sz);
 	delete[] this->bytes;
-	this->bytes = new u32[this->asz];
-	memset(this->bytes, 0, sizeof(u32) * this->asz);
-	memcpy(this->bytes, tBytes, osz);
-	delete[] tBytes;
+	//this->bytes = new u32[this->asz];
+	//memset(this->bytes, 0, sizeof(u32) * this->asz);
+	//memcpy(this->bytes, tBytes, sizeof(u32) * this->sz);
+	//delete[] tBytes;
+	this->bytes = tBytes;
 }
 
 void BitStream::clip() {
@@ -482,13 +487,17 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 	i32 nDistCodes = stream.readNBits(5) + 1; //distance tree
 	i32 nClCodes = stream.readNBits(4) + 4; //tree tree
 
+	std::cout << "LIT CODES: " << nTreeCodes << " DIST CODES: " << nDistCodes << " CL CODES: " << nClCodes << std::endl;
+
 	//allocate and get get bit lens
 	u32* bitLens = new u32[19];
 	memset(bitLens, 0, sizeof(u32) * 19);
 
 	//create bit lengths for the decode tree tree
-	for (int i = 0; i < nClCodes; i++)
+	for (int i = 0; i < nClCodes; i++) {
 		bitLens[CodeLengthCodesOrder[i]] = stream.readNBits(3);
+		std::cout << "\tcBitLens: " << bitLens[CodeLengthCodesOrder[i]] << " " << nClCodes << std::endl;
+	}
 
 
 	/*std::cout << "Tree Codes: ";
@@ -500,12 +509,15 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 	//create the code length tree
 	HuffmanTreeNode* codeLenTree = BitLengthsToHTree(bitLens, 19, (u32*)CreateAlphabet(19), 19);
 
+	std::cout << "CL TREE: " << std::endl;
+	PrintTree(codeLenTree);
+
 	//decode le trees
 	std::vector<u32> combinedBitLens;
 
 	while (combinedBitLens.size() < nTreeCodes + nDistCodes) {
 		i32 sym = DecodeSymbol(stream, codeLenTree);
-
+		std::cout << "\ttBit Lens: " << sym << std::endl;
 		//0-15 normal symbol
 		if (sym <= 15) {
 			combinedBitLens.push_back(sym);
@@ -537,8 +549,12 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 		}
 	}
 
+	for (auto v : combinedBitLens) {
+		//std::cout << "\ttBit Lens: " << v << std::endl;
+	}
+
 	//construct trees
-	std::vector<u32> distLens, treeLens;
+ 	std::vector<u32> distLens, treeLens;
 
 	for (int i = 0; i < combinedBitLens.size(); i++) {
 		if (i < nTreeCodes) {
@@ -631,6 +647,7 @@ void InflateBlock(BitStream& stream, HuffmanTreeNode* llTree, HuffmanTreeNode* d
 
 void InflateBlockDynamic(BitStream& stream, std::vector<char>& res) {
 	HuffmanTreeNode** trees = decodeTrees(stream);
+	std::cout << "\tDECODED TREES" << std::endl;
 	PrintTree(trees[0]);
 	PrintTree(trees[1]);
 	InflateBlock(stream, trees[0], trees[1], res);
@@ -691,6 +708,8 @@ BData _Inflate(BitStream& stream) {
 		i32 bFinal = stream.readBit();
 		i32 bType = stream.readNBits(2);
 
+		std::cout << "FINAL: " << bFinal << " BTYPE: " << bType << std::endl;
+
 		switch (bType) {
 		case 0: {
 			InflateBlockNone(stream, res);
@@ -705,7 +724,7 @@ BData _Inflate(BitStream& stream) {
 			break;
 		}
 		default: {
-			std::cout << "Error invalid block!" << std::endl;
+			std::cout << "Error invalid block! Type: " << bType << std::endl;
 		}
 		}
 
@@ -748,6 +767,8 @@ ZResult Zlib::Inflate(u32* bytes, size_t len) {
 
 	res.compressionLevel = (compressionFlags >> 6) & 0b11;
 	res.compressionMode = compressionMode;
+
+	std::cout << "Compression Level: " << res.compressionLevel << "\nCompression Info: " << compressionInfo << "\nMode: " << compressionMode << std::endl;
 
 	BData iDat = _Inflate(stream);
 
@@ -1095,7 +1116,7 @@ void flushHash(std::unordered_map<std::string, i64>& table, u64 offset) {
 void WriteVBitsToStream(BitStream& stream, const long val, size_t nBits) {
 	if (nBits <= 0) return;
 
-	for (i32 i = nBits - 1; i >= 0; i--)
+	for (i32 i = 0; i < nBits; i++)
 		stream.writeBit((val >> i) & 1);
 }
 
@@ -1185,7 +1206,7 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
 	do {
 		//std::cout << "Bytes Left: " << bytesLeft << " " << winRight << std::endl;
 #ifdef BALLOON_DEBUG
-		if (currentByte % printThreshold == 0) {
+		if (printThreshold != 0 && currentByte % printThreshold == 0) {
 			std::cout << "Compressed: [" << currentByte << " / " << sz << "] \n";
 			std::cout << "Map Sz: " << hashTable.size() << "\n";
 		}
@@ -1325,14 +1346,17 @@ template<typename _T> arr_container<_T>* clipArr(_T* dat, size_t _sz) {
 	_T* last = nullptr;
 	
 	do {
-		if (*cur == 0) {
-			do {
-				last = cur;
-			} while (*++cur == 0 && cur < end);
+		/*if (*cur == 0) {
+			//do {
+				//last = cur;
+			//} while (*++cur == 0 && cur < end);
 		}
-		else
-			cur++;
-	} while (cur < end);
+		else {*/
+
+		if (*cur != 0)
+			last = cur;
+		//}
+	} while (++cur < end);
 
 	if (last == nullptr) {
 		arr_container<_T>* defRes = new arr_container<_T>;
@@ -1341,7 +1365,7 @@ template<typename _T> arr_container<_T>* clipArr(_T* dat, size_t _sz) {
 		return defRes;
 	}
 	
-	size_t sz = (size_t) (last - dat);
+	size_t sz = (size_t) (last - dat) + 1;
 	arr_container<_T>* res = new arr_container<_T>;
 	res->dat = new _T[_sz];
 	ZeroMem(res->dat, _sz);
@@ -1365,20 +1389,241 @@ void computeAdler32CheckSum(u32& current, byte dat) {
 	current = (b << 16) | a;
 }
 
-/**
- * 
- * Function to add deflate blocks deflate blocks
- * 
- */
-
 #define RLE_Z_MASK 0b1111111
 #define RLE_Z_BASE 11
 #define RLE_L1_MASK 0b11
 #define RLE_L2_MASK 0b111
 #define RLE_L_BASE 3
 
+//fnuictio to write the trees to a deflate stream
+void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* distTree) {
+	//get codes
+	//std::cout << "----------------\nLit Tree\n------------------------" << std::endl;
+	//PrintTree(litTree);
+
+	std::cout << "WRITING TREES!" << std::endl;
+
+	u32* litCodes = getTreeBitLens(litTree, litTree->alphabetSz);
+	u32* distCodes = getTreeBitLens(distTree, distTree->alphabetSz);
+
+	for (int i = 0; i < litTree->alphabetSz; i++) {
+		std::cout << litCodes[i] << " lc" << std::endl;
+	}
+
+	for (int i = 0; i < distTree->alphabetSz; i++) {
+		std::cout << distCodes[i] << " dc" << std::endl;
+	}
+
+	//so some clipping and other stuff
+	arr_container<u32>* litClip = clipArr(litCodes, litTree->alphabetSz);
+	arr_container<u32>* distClip = clipArr(distCodes, distTree->alphabetSz);
+
+	//now get some header info
+	i32 HLIT = litClip->sz - 257;
+	i32 HDIST = distClip->sz - 1;
+
+	//allocate some memory ill probably forget to free later lol
+	u32* treeBitCounts = new u32[19];
+
+	u32* precompressedCodeLengths = new u32[litClip->sz + distClip->sz];
+
+	//do some stuff
+	memcpy(
+		precompressedCodeLengths,
+		litClip->dat,
+		litClip->sz * sizeof(u32)
+	); //3 bits per code
+	memcpy(
+		precompressedCodeLengths + litClip->sz,
+		distClip->dat,
+		distClip->sz * sizeof(u32)
+	);
+
+	for (int i = 0; i < litClip->sz + distClip->sz; i++) {
+		if (i % litClip->sz == 0) std::cout << "--------------------" << std::endl;
+		std::cout << "Precompessed CL: " << precompressedCodeLengths[i] << std::endl;
+	}
+
+	//now compress code lengths
+	const int lengthMask = 0x7; //0b111
+
+	std::vector<u32> compressedLengths, compressedSymbols;
+
+	u32* current = precompressedCodeLengths;
+	u32* end = precompressedCodeLengths + (litClip->sz + distClip->sz);
+
+	//run length encoding
+	do {
+		if (current == nullptr) {
+			break;
+		}
+		//0 back ref stuff
+		//std::cout << "Cur: " << *current << " " << precompressedCodeLengths << " " << (end - precompressedCodeLengths) << " " << (current - precompressedCodeLengths) << std::endl;
+		if (*current == 0) {
+			u32* temp = current;
+
+			do {
+				//std::cout << *temp << "  " << *current << "  " << temp << " " << current << std::endl;
+			} while (*temp++ == 0 && current - temp < (RLE_Z_BASE + RLE_Z_MASK));
+
+			u64 copyLen = (u64)(temp - current);
+			copyLen = MAX(copyLen, 1);
+
+			//std::cout << "COPY LEN: " << copyLen << std::endl;
+
+			if (copyLen >= RLE_Z_BASE) {
+				//back reference
+				current += copyLen;
+				compressedLengths.push_back(18);
+				compressedSymbols.push_back(18);
+				compressedLengths.push_back((copyLen - RLE_Z_BASE) & RLE_Z_MASK);
+			}
+			else {
+				current += copyLen;
+				while (copyLen-- > 0) {
+					compressedLengths.push_back(0);
+					compressedSymbols.push_back(0);
+				}
+			}
+		}
+		//else just do normal run length encoding
+		else {
+			u32* temp = current;
+
+			do {
+				//std::cout << *temp << "  " << *current << std::endl;
+			} while (*temp++ == *current && current - temp < (RLE_L_BASE + RLE_L2_MASK));
+
+			u64 copyLen = (u64)(temp - current);
+
+			copyLen = MAX(copyLen, 1);
+
+			//std::cout << "COPY LEN: " << copyLen << std::endl;
+
+			if (copyLen >= RLE_L_BASE) {
+				//back reference
+				//ll 1
+				if (copyLen > RLE_L_BASE + RLE_L1_MASK) {
+					compressedLengths.push_back(16);
+					compressedSymbols.push_back(16);
+					compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L1_MASK);
+					current += copyLen;
+				}
+				//ll 2
+				else {
+					compressedLengths.push_back(17);
+					compressedSymbols.push_back(17);
+					compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L2_MASK);
+					current += copyLen;
+				}
+			}
+			//just add stuff ya know
+			else {
+				byte tCopy = *current;
+				while (copyLen-- > 0) {
+					compressedLengths.push_back(tCopy);
+					compressedSymbols.push_back(tCopy);
+				}
+
+				current += copyLen;
+			}
+		}
+	} while (current < end);
+	for (auto v : compressedSymbols) {
+		std::cout << "\teBit Lens: " << v << std::endl;
+	}
+
+	delete[] precompressedCodeLengths, treeBitCounts, litClip->dat, distClip->dat;
+	delete litClip, distClip;
+
+	//for (auto o : compressedSymbols) {
+		//std::cout << "CompressedLen: " << o << std::endl;
+	//}
+
+	//generate tree tree... yeah the tree tree
+	u32* codeCounts = GetCharCount(compressedSymbols.data(), compressedSymbols.size(), 19);
+	//std::cout << "! " << std::endl;
+	HuffmanTreeNode* tempTree = GenerateBaseTree(codeCounts, 19);
+	//std::cout << "! " << std::endl;
+	HuffmanTreeNode* codeLengthTree = CovnertTreeToCanonical(tempTree, 19);
+	//std::cout << "! " << std::endl;
+	u32* codeTreeBitLen = getTreeBitLens(codeLengthTree, 19);
+	//std::cout << "! " << std::endl;
+	//write bit counts for code length tree
+	arr_container<u32>* ccClip = clipArr(codeTreeBitLen, 19);
+
+	for (int i = 0; i < 19; i++) {
+		std::cout << "CCCOUNT: " << codeCounts[i] << " " << i << std::endl;
+	}
+	//std::cout << "! " << std::endl;
+	u32* cc = ccClip->dat;
+	u32 HCLEN = ccClip->sz - 4;
+
+	//write tree header
+	WriteVBitsToStream(stream, HLIT, 5);
+	WriteVBitsToStream(stream, HDIST, 5);
+	WriteVBitsToStream(stream, HCLEN, 4);
+
+	std::cout << "LIT CODES 1: " << HLIT << " DIST CODES 1: " << HDIST << " CL CODES 1: " << HCLEN << std::endl;
+	PrintTree(codeLengthTree);
+	//write the code lengths into the tree thingy
+	do {
+		size_t i = (int)(cc - ccClip->dat);
+		WriteVBitsToStream(stream, *(ccClip->dat + CodeLengthCodesOrder[i]), 3);
+		std::cout << "e: " << i << std::endl;
+		std::cout << "\tuBitLens: " << *(ccClip->dat + CodeLengthCodesOrder[i]) << std::endl;
+	} while (cc++ < ccClip->dat + ccClip->sz);
+
+	//final step, encode+write the other 2 trees to the stream
+	u32 sym = NULL;
+	for (i32 i = 0; i < compressedLengths.size(); i++) {
+		std::cout << i << " " << compressedLengths.size() << std::endl;
+		sym = compressedLengths[i];
+		WriteVBitsToStream(
+			stream,
+			EncodeSymbol(
+				sym,
+				codeLengthTree
+			),
+			codeTreeBitLen[compressedLengths[i]]
+		);
+
+		std::cout << "pBitLen: " << sym << std::endl;
+
+		//back reference bits
+		if (sym > 15) {
+			switch (sym) {
+			case 16: {
+				WriteVBitsToStream(stream, sym, RLE_L1_MASK);
+				break;
+			}
+			case 17: {
+				WriteVBitsToStream(stream, sym, RLE_L2_MASK);
+				break;
+			}
+			case 18: {
+				WriteVBitsToStream(stream, sym, RLE_Z_MASK);
+				break;
+			}
+			}
+
+			i++;
+		}
+	}
+
+	delete[] codeTreeBitLen, litCodes, distCodes;
+
+	std::cout << "Done Writing Trees!" << std::endl;
+};
+
+/**
+ * 
+ * Function to add deflate blocks deflate blocks
+ * 
+ */
+
 void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_t winBits, const int level, bool finalBlock = false) {
-	const int bFinal = finalBlock & 0x01;
+	const int bFinal = (byte)finalBlock & 0x01;
 	int bType = 0;
 
 	//dynamic block
@@ -1387,196 +1632,11 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 
 	//generate block
 
-
-	auto writeTrees = [](BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* distTree) {
-		//get codes
-		std::cout << "----------------\nLit Tree\n------------------------" << std::endl;
-		PrintTree(litTree);
-
-
-		u32* litCodes = getTreeBitLens(litTree, litTree->alphabetSz);
-		u32* distCodes = getTreeBitLens(distTree, distTree->alphabetSz);
-
-		//so some clipping and other stuff
-		arr_container<u32>* litClip = clipArr(litCodes, litTree->alphabetSz);
-		arr_container<u32>* distClip = clipArr(distCodes, distTree->alphabetSz);
-
-		//now get some header info
-		i32 HLIT = litClip->sz - 257;
-		i32 HDIST = distClip->sz - 1;
-
-		//allocate some memory ill probably forget to free later lol
-		u32* treeBitCounts = new u32[19];
-		
-		u32* precompressedCodeLengths = new u32[litTree->alphabetSz + distTree->alphabetSz];
-
-		//do some stuff
-		memcpy(precompressedCodeLengths, litClip->dat, litTree->alphabetSz * sizeof(u32)); //3 bits per code
-		memcpy(precompressedCodeLengths + litTree->alphabetSz, distClip->dat, distTree->alphabetSz * sizeof(u32));
-
-		//now compress code lengths
-		const int lengthMask = 0x7; //0b111
-
-		std::vector<u32> compressedLengths, compressedSymbols;
-
-		u32* current = precompressedCodeLengths;
-		u32* end = precompressedCodeLengths + (litClip->sz + distClip->sz);
-
-		//run length encoding
-		do {
-			if (current == nullptr) {
-				break;
-			}
-			//0 back ref stuff
-			//std::cout << "Cur: " << *current << " " << precompressedCodeLengths << " " << (end - precompressedCodeLengths) << " " << (current - precompressedCodeLengths) << std::endl;
-			if (*current == 0) {
-				u32* temp = current;
-
-				do {
-					//std::cout << *temp << "  " << *current << "  " << temp << " " << current << std::endl;
-				} while (*temp++ == 0 && current - temp < (RLE_Z_BASE + RLE_Z_MASK));
-
-				u64 copyLen = (u64) (temp - current);
-				copyLen = MAX(copyLen, 1);
-
-				//std::cout << "COPY LEN: " << copyLen << std::endl;
-
-				if (copyLen >= RLE_Z_BASE) {
-					//back reference
-					current += copyLen;
-					compressedLengths.push_back(18);
-					compressedSymbols.push_back(18);
-					compressedLengths.push_back((copyLen - RLE_Z_BASE) & RLE_Z_MASK);
-				}
-				else {
-					current += copyLen;
-					while (copyLen-- > 0) {
-						compressedLengths.push_back(0);
-						compressedSymbols.push_back(0);
-					}
-				}
-			}
-			//else just do normal run length encoding
-			else {
-				u32* temp = current;
-
-				do {
-					//std::cout << *temp << "  " << *current << std::endl;
-				} while (*temp++ == *current && current - temp < (RLE_L_BASE + RLE_L2_MASK));
-
-				u64 copyLen = (u64)(temp - current);
-
-				copyLen = MAX(copyLen, 1);
-
-				//std::cout << "COPY LEN: " << copyLen << std::endl;
-
-				if (copyLen >= RLE_L_BASE) {
-					//back reference
-					//ll 1
-					if (copyLen > RLE_L_BASE + RLE_L1_MASK) {
-						compressedLengths.push_back(16);
-						compressedSymbols.push_back(16);
-						compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L1_MASK);
-						current += copyLen;
-					}
-					//ll 2
-					else {
-						compressedLengths.push_back(17);
-						compressedSymbols.push_back(17);
-						compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L2_MASK);
-						current += copyLen;
-					}
-				}
-				//just add stuff ya know
-				else {
-					current += copyLen;
-					byte tCopy = *current;
-					while (copyLen-- > 0) {
-						compressedLengths.push_back(tCopy);
-						compressedSymbols.push_back(tCopy);
-					}
-				}
-			}
-		} while (current < end);
-
-		delete[] precompressedCodeLengths, treeBitCounts, litClip->dat, distClip->dat;
-		delete litClip, distClip;
-
-		for (auto o : compressedSymbols) {
-			std::cout << "CompressedLen: " << o << std::endl;
-		}
-
-		//generate tree tree yeah the tree tree
-		u32* codeCounts = GetCharCount(compressedSymbols.data(), compressedSymbols.size(), 19);
-		std::cout << "! " << std::endl;
-		HuffmanTreeNode* tempTree = GenerateBaseTree(codeCounts, 19);
-		std::cout << "! " << std::endl;
-		HuffmanTreeNode* codeLengthTree = CovnertTreeToCanonical(tempTree, 19);
-		std::cout << "! " << std::endl;
-		u32* codeTreeBitLen = getTreeBitLens(codeLengthTree, 19);
-		std::cout << "! " << std::endl;
-		//write bit counts for code length tree
-		arr_container<u32>* ccClip = clipArr(codeCounts, 19);
-		std::cout << "! " << std::endl;
-		u32* cc = ccClip->dat;
-		u32 HCLEN = ccClip->sz;
-
-		//write tree header
-		WriteVBitsToStream(stream, HLIT, 5);
-		WriteVBitsToStream(stream, HDIST, 5);
-		WriteVBitsToStream(stream, HCLEN, 4);
-
-		//write the code lengths into the tree thingy
-		do {
-			size_t i = (int) (cc - ccClip->dat);
-			WriteVBitsToStream(stream, *(ccClip->dat + CodeLengthCodesOrder[i]), 3);
-			std::cout << "e: " << i << std::endl;
-		} while (cc++ < ccClip->dat + ccClip->sz);
-
-		//final step, encode+write the other 2 trees to the stream
-		u32 sym = NULL;
-		for (i32 i = 0; i < compressedLengths.size(); i++) {
-			std::cout << i << " " << compressedLengths.size() << std::endl;
-			sym = compressedLengths[i];
-			WriteVBitsToStream(
-				stream,
-				EncodeSymbol(
-					sym,
-					codeLengthTree
-				),
-				codeTreeBitLen[compressedLengths[i]]
-			);
-
-			//back reference bits
-			if (sym > 15) {
-				switch (sym) {
-				case 16: {
-					WriteVBitsToStream(stream, sym, RLE_L1_MASK);
-					break;
-				}
-				case 17: {
-					WriteVBitsToStream(stream, sym, RLE_L2_MASK);
-					break;
-				}
-				case 18: {
-					WriteVBitsToStream(stream, sym, RLE_Z_MASK);
-					break;
-				}
-				}
-
-				i++;
-			}
-		}
-
-		delete[] codeTreeBitLen, litCodes, distCodes;
-
-		std::cout << "Done Writing Trees!" << std::endl;
-	};
-
 	//write block header
 	stream.writeBit(bFinal);
-	stream.writeBit(bType & 0b10);
+	std::cout << "\tBlock Type: " << bType << " 0b" << (bType & 0b10) << (bType & 0b01) << std::endl;
 	stream.writeBit(bType & 0b01);
+	stream.writeBit((bType & 0b10) >> 1);
 
 	//now compress the data
 	switch (level) {
@@ -1607,12 +1667,12 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 
 		//now write all the bytes
 		for (i32 i = 0; i < len; i++) {
-			std::cout << "Byte: " << i << " / " << len << "\n";
+			//std::cout << "Byte: " << i << " / " << len << "\n";
 			//check sum
 			computeAdler32CheckSum(checkSum, bytes[i]);
 
 			//continue to write stuff
-			std::cout << "Symbol: " << EncodeSymbol(bytes[i], tree)  << " " << treeCodeLengths[bytes[i]] << std::endl;
+			//std::cout << "Symbol: " << EncodeSymbol(bytes[i], tree)  << " " << treeCodeLengths[bytes[i]] << std::endl;
 			WriteVBitsToStream(
 				stream,
 				EncodeSymbol(bytes[i], tree),
@@ -1629,7 +1689,7 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		FreeTree(baseTree);
 		delete[] treeCodeLengths, charCounts;
 
-		std::cout << "Block done!" << std::endl;
+		//std::cout << "Block done!" << std::endl;
 
 		//we done :D
 		break;
@@ -1640,8 +1700,15 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 
 		u32* charCounts = GetCharCount(lzr->rStream.data(), lzr->rStream.size(), DEFAULT_ALPHABET_SZ);
 
+		for (int i = 0; i < DEFAULT_ALPHABET_SZ; i++) {
+			std::cout << "Char Count: " << charCounts[i] << std::endl;
+		}
+
 		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
 		HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, DEFAULT_ALPHABET_SZ);
+
+		std::cout << "tree :D" << std::endl;
+		PrintTree(tree);
 
 		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
 		u32* distCodeLengths = getTreeBitLens(lzr->distTree, DEFAULT_ALPHABET_SZ);
@@ -1762,6 +1829,8 @@ ZResult Zlib::Deflate(u32* bytes, size_t len, const size_t winBits, const int le
 
 	flg = (cmf * 256) % 31; //to make sure the check sum is good
 
+	std::cout << "Compression Info: " << (i32)cmf << std::endl;
+
 	//write the header info
 	rStream.writeValue<byte>(cmf);
 	rStream.writeValue<byte>(flg);
@@ -1822,15 +1891,15 @@ void Huffman::DebugMain() {
 	std::cout << "Symbol 4: " << (char)DecodeSymbol(r, testRoot) << std::endl;
 	std::cout << "Symbol 5: " << (char)DecodeSymbol(r, testRoot) << std::endl;
 	std::cout << "Symbol 6: " << (char)DecodeSymbol(r, testRoot) << std::endl;*/
-	Zlib z;
-	ZResult testRes = z.Inflate((u32*)testData, 183);
+	//Zlib z;
+	//ZResult testRes = z.Inflate((u32*)testData, 183);
 
-	std::cout << "Test Result: " << testRes.bytes << std::endl;
+	//std::cout << "Test Result: " << testRes.bytes << std::endl;
 
-	for (int i = 0; i < testRes.len; i++)
-		std::cout << testRes.bytes[i];
+	//for (int i = 0; i < testRes.len; i++)
+		//std::cout << testRes.bytes[i];
 	
-	std::cout << std::endl << " --------------------- " << std::endl << "Len: " << testRes.len << std::endl;
+	//std::cout << std::endl << " --------------------- " << std::endl << "Len: " << testRes.len << std::endl;
 
 	/*
 	
@@ -1882,7 +1951,7 @@ void Huffman::DebugMain() {
 	//std::cout << "Test Result 2: " << testRes2.bytes << std::endl;
 
 	//string search testing
-	char testBuff[] = "Some random example text to be search by the search buffer function.";
+	char testBuf[] = "This is some test text that will be deflate then reinflate. ABABAB    ABABABAB <- test backreference";
 	//std::vector<i32> searchRes = searchBuffer(testBuff, 68, (char*)"search", 6, INT_MAX, 256);
 
 	//for (const auto& v : searchRes)
@@ -1895,14 +1964,14 @@ void Huffman::DebugMain() {
 	for (i32 i = 0; i < len; i++)
 		uTestStr[i] = (u32)testStr[i];*/
 
-	size_t len = (1 << 10);
+	size_t len = strlen(testBuf);
 
 	u32* uTestStr = new u32[len];
 
 	srand(time(NULL));
 
 	for (size_t i = 0; i < len; i++)
-		uTestStr[i] = (u32)((rand()%20) + 48);
+		uTestStr[i] = testBuf[i];
 
 	/*std::vector<u32> lz77testRes = lz77_encode(uTestStr, len, 16, 32);
 
@@ -1924,12 +1993,20 @@ void Huffman::DebugMain() {
 	//test compression
 
 
-	ZResult test = Zlib::Deflate(uTestStr, len, 15, 1);
+	ZResult test = Zlib::Deflate(uTestStr, len, 15, 2);
 
 	std::cout << "Compression Done!" << std::endl;
 
 	for (i32 i = 0; i < test.len; i++) {
-		std::cout << test.bytes[i] << " ";
+		std::cout << std::hex << test.bytes[i] << " ";
+	}
+
+	std::cout << std::dec << "\nInflate: " << std::endl;
+
+	ZResult testInflate = Zlib::Inflate((u32*)test.bytes, test.len);
+
+	for (i32 i = 0; i < testInflate.len; i++) {
+		std::cout << std::dec << testInflate.bytes[i] << " ";
 	}
 
 	std::cout << std::endl;

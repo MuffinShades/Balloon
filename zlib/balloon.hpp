@@ -135,3 +135,6 @@ public:
 	static ZResult Inflate(u32* bytes, size_t len);
 	static ZResult Deflate(u32* bytes, size_t len, const size_t winBits, const int level);
 };
+
+
+//TODO check lz77 generated stream to rid it of bytes like 32, 6, 2, and 1
