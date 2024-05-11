@@ -139,6 +139,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="legacy.txt" />
+    <Text Include="WorkingFunctions.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

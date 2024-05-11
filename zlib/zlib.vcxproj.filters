@@ -29,5 +29,6 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="legacy.txt" />
+    <Text Include="WorkingFunctions.txt" />
   </ItemGroup>
 </Project>

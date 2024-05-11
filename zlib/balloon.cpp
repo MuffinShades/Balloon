@@ -195,6 +195,7 @@ void BitStream::allocNewChunk() {
 }
 
 void BitStream::clip() {
+	//wtf???
 	u32* tBytes = new u32[this->asz];
 	u32 osz = this->asz;
 	memcpy(tBytes, this->bytes, this->asz);
@@ -482,6 +483,7 @@ int* CreateAlphabet(int len) {
 
 std::vector<u32> _treeLens;
 
+//why the actual fuck does zlib have to encode trees like its encrypting a fucking http request
 HuffmanTreeNode** decodeTrees(BitStream& stream) {
 	i32 nTreeCodes = stream.readNBits(5) + 257; //main tree
 	i32 nDistCodes = stream.readNBits(5) + 1; //distance tree
@@ -550,7 +552,7 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 	}
 
 	for (auto v : combinedBitLens) {
-		//std::cout << "\ttBit Lens: " << v << std::endl;
+		std::cout << "\ttBit Lens: " << v << std::endl;
 	}
 
 	//construct trees
@@ -581,6 +583,11 @@ HuffmanTreeNode** decodeTrees(BitStream& stream) {
 	//create le trees
 	HuffmanTreeNode* distTree = BitLengthsToHTree(distLens.data(), distLens.size(), da, 30);
 	HuffmanTreeNode* mainTree = BitLengthsToHTree(treeLens.data(), treeLens.size(), dm, 286);
+
+	std::cout << "Trees: " << std::endl;
+	PrintTree(distTree);
+	std::cout << "-----------------------" << std::endl;
+	PrintTree(mainTree);
 
 	//free memory
 	delete[] bitLens;
@@ -1168,7 +1175,7 @@ Rn it can only get around 4-6 mb/s but thats better than 3kb/s
 
 struct lz77_res {
 	std::vector<u32> rStream;
-	char* charCounts;
+	u32* charCounts;
 	HuffmanTreeNode* distTree;
 };
 
@@ -1177,7 +1184,8 @@ lz77_res* lz77_encode(u32* bytes, size_t sz, const u32 winBits, const size_t loo
 
 	lz77_res* res = new lz77_res;
 
-	res->charCounts = new char[alphabetSize];
+	res->charCounts = new u32[alphabetSize];
+	ZeroMem(res->charCounts, alphabetSize);
 
 	u32* window = bytes;
 	i32 winLeft = 0, winRight = MIN(sz, lookahead), bytesLeft = sz - winRight;
@@ -1360,8 +1368,8 @@ template<typename _T> arr_container<_T>* clipArr(_T* dat, size_t _sz) {
 
 	if (last == nullptr) {
 		arr_container<_T>* defRes = new arr_container<_T>;
-		defRes->dat = dat;
-		defRes->sz = _sz;
+		defRes->dat = nullptr;
+		defRes->sz = 0;
 		return defRes;
 	}
 	
@@ -1375,7 +1383,7 @@ template<typename _T> arr_container<_T>* clipArr(_T* dat, size_t _sz) {
 	return res;
 }
 
-const uint32_t MOD_ADLER = 65521;
+const uint32_t MOD_ADLER = 65521; //0xfff1
 
 #define ADLER32_BASE 1
 
@@ -1389,13 +1397,16 @@ void computeAdler32CheckSum(u32& current, byte dat) {
 	current = (b << 16) | a;
 }
 
-#define RLE_Z_MASK 0b1111111
-#define RLE_Z_BASE 11
-#define RLE_L1_MASK 0b11
-#define RLE_L2_MASK 0b111
-#define RLE_L_BASE 3
+#define RLE_Z_BASE 0xb
+
+#define RLE_Z2_MASK 0x7f
+#define RLE_Z1_MASK 0x7
+
+#define RLE_L_MASK 0x3
+#define RLE_L_BASE 0x3
 
 //fnuictio to write the trees to a deflate stream
+//this shit is the bane of my existence
 void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* distTree) {
 	//get codes
 	//std::cout << "----------------\nLit Tree\n------------------------" << std::endl;
@@ -1422,6 +1433,11 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 	i32 HLIT = litClip->sz - 257;
 	i32 HDIST = distClip->sz - 1;
 
+	if (distClip->sz <= 0) HDIST = 0;
+	if (litClip->sz <= 0) HLIT = 0;
+
+	std::cout << "HLIT: " << HLIT + 257 << " " << " HDIST: " << HDIST+1 << std::endl;
+
 	//allocate some memory ill probably forget to free later lol
 	u32* treeBitCounts = new u32[19];
 
@@ -1440,8 +1456,8 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 	);
 
 	for (int i = 0; i < litClip->sz + distClip->sz; i++) {
-		if (i % litClip->sz == 0) std::cout << "--------------------" << std::endl;
-		std::cout << "Precompessed CL: " << precompressedCodeLengths[i] << std::endl;
+		//if (i % litClip->sz == 0) std::cout << "--------------------" << std::endl;
+		std::cout << "Precompessed CL: " << precompressedCodeLengths[i] << " " << i << std::endl;
 	}
 
 	//now compress code lengths
@@ -1449,7 +1465,7 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 
 	std::vector<u32> compressedLengths, compressedSymbols;
 
-	u32* current = precompressedCodeLengths;
+	u32* current = precompressedCodeLengths; //yay glitchy ass pointers
 	u32* end = precompressedCodeLengths + (litClip->sz + distClip->sz);
 
 	//run length encoding
@@ -1462,21 +1478,33 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 		if (*current == 0) {
 			u32* temp = current;
 
-			do {
-				//std::cout << *temp << "  " << *current << "  " << temp << " " << current << std::endl;
-			} while (*temp++ == 0 && current - temp < (RLE_Z_BASE + RLE_Z_MASK));
+			do {} while (*temp++ == 0 && (u64)(current - temp) < (RLE_Z_BASE + RLE_Z2_MASK));
 
 			u64 copyLen = (u64)(temp - current);
-			copyLen = MAX(copyLen, 1);
+			copyLen = MAX(copyLen+1, 1);
 
 			//std::cout << "COPY LEN: " << copyLen << std::endl;
 
 			if (copyLen >= RLE_Z_BASE) {
 				//back reference
-				current += copyLen;
-				compressedLengths.push_back(18);
-				compressedSymbols.push_back(18);
-				compressedLengths.push_back((copyLen - RLE_Z_BASE) & RLE_Z_MASK);
+
+				if (copyLen >= RLE_L_BASE) {
+					//back reference
+					//ll 1
+					if (copyLen > RLE_L_BASE + RLE_Z1_MASK) {
+						compressedLengths.push_back(17);
+						compressedSymbols.push_back(17);
+						compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_Z1_MASK);
+						current += copyLen;
+					}
+					//ll 2
+					else {
+						compressedLengths.push_back(18);
+						compressedSymbols.push_back(18);
+						compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_Z2_MASK);
+						current += copyLen;
+					}
+				}
 			}
 			else {
 				current += copyLen;
@@ -1490,30 +1518,22 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 		else {
 			u32* temp = current;
 
-			do {
-				//std::cout << *temp << "  " << *current << std::endl;
-			} while (*temp++ == *current && current - temp < (RLE_L_BASE + RLE_L2_MASK));
+			//goofy do while to screw with pointers
+			do {} while (*temp++ == *current && (u64)(current - temp) < (RLE_L_BASE + RLE_L_MASK));
 
 			u64 copyLen = (u64)(temp - current);
 
-			copyLen = MAX(copyLen, 1);
+			copyLen = MAX(copyLen+1, 1);
 
 			//std::cout << "COPY LEN: " << copyLen << std::endl;
 
 			if (copyLen >= RLE_L_BASE) {
 				//back reference
 				//ll 1
-				if (copyLen > RLE_L_BASE + RLE_L1_MASK) {
+				if (copyLen > RLE_L_BASE + RLE_L_MASK) {
 					compressedLengths.push_back(16);
 					compressedSymbols.push_back(16);
-					compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L1_MASK);
-					current += copyLen;
-				}
-				//ll 2
-				else {
-					compressedLengths.push_back(17);
-					compressedSymbols.push_back(17);
-					compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L2_MASK);
+					compressedLengths.push_back((copyLen - RLE_L_BASE) & RLE_L_MASK);
 					current += copyLen;
 				}
 			}
@@ -1529,6 +1549,7 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 			}
 		}
 	} while (current < end);
+
 	for (auto v : compressedSymbols) {
 		std::cout << "\teBit Lens: " << v << std::endl;
 	}
@@ -1536,9 +1557,9 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 	delete[] precompressedCodeLengths, treeBitCounts, litClip->dat, distClip->dat;
 	delete litClip, distClip;
 
-	//for (auto o : compressedSymbols) {
-		//std::cout << "CompressedLen: " << o << std::endl;
-	//}
+	for (auto o : compressedSymbols) {
+		std::cout << "CompressedLen: " << o << std::endl;
+	}
 
 	//generate tree tree... yeah the tree tree
 	u32* codeCounts = GetCharCount(compressedSymbols.data(), compressedSymbols.size(), 19);
@@ -1594,15 +1615,15 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 		if (sym > 15) {
 			switch (sym) {
 			case 16: {
-				WriteVBitsToStream(stream, sym, RLE_L1_MASK);
+				WriteVBitsToStream(stream, sym, 2);
 				break;
 			}
 			case 17: {
-				WriteVBitsToStream(stream, sym, RLE_L2_MASK);
+				WriteVBitsToStream(stream, sym, 3);
 				break;
 			}
 			case 18: {
-				WriteVBitsToStream(stream, sym, RLE_Z_MASK);
+				WriteVBitsToStream(stream, sym, 7);
 				break;
 			}
 			}
@@ -1615,6 +1636,30 @@ void writeTrees(BitStream& stream, HuffmanTreeNode* litTree, HuffmanTreeNode* di
 
 	std::cout << "Done Writing Trees!" << std::endl;
 };
+
+//specialized version of get char count for a lz77 stream and also filters the stream
+u32* getLzCharCounts(lz77_res *s, size_t alphabetSz) {
+	i32 i = 0, sz = s->rStream.size(), _c = NULL;
+	u32* counts = new u32[alphabetSz];
+	ZeroMem(counts, alphabetSz);
+	std::vector<u32> nStream;
+	do {
+		_c = s->rStream[i];
+		if (_c > 0 && _c < alphabetSz) {
+			counts[_c]++;
+			nStream.push_back(_c);
+			if (_c > 257)
+				i += 3;
+		}
+		else {
+			std::cout << "INVALID CHAR: " << _c << std::endl;
+		}
+	} while (++i < sz);
+
+	s->rStream = nStream;
+
+	return counts;
+}
 
 /**
  * 
@@ -1658,7 +1703,19 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 		tree->alphabetSz = DEFAULT_ALPHABET_SZ;
 		HuffmanTreeNode* distTree = new HuffmanTreeNode;
 		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
+
+		//create a null node this will just get discarded at some point during inflate
 		distTree->alphabetSz = 30;
+		distTree->count = 1;
+		distTree->val = NULL;
+
+		//debug ;;-;;
+		std::cout << "Lit Tree: " << std::endl;
+		PrintTree(tree);
+
+		std::cout << "---------------------------" << std::endl;
+
+		PrintTree(distTree);
 
 		//write the trees
 		writeTrees(stream, tree, distTree);
@@ -1698,10 +1755,16 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 	case 2: {
 		lz77_res* lzr = lz77_encode(bytes, len, winBits, 258);
 
-		u32* charCounts = GetCharCount(lzr->rStream.data(), lzr->rStream.size(), DEFAULT_ALPHABET_SZ);
+		u32* charCounts = lzr->charCounts;
+
+		for (auto b : lzr->rStream) {
+			std::cout << b << " ";
+		}
+
+		std::cout << std::endl;
 
 		for (int i = 0; i < DEFAULT_ALPHABET_SZ; i++) {
-			std::cout << "Char Count: " << charCounts[i] << std::endl;
+			std::cout << "Char Count: " << charCounts[i] << " " << i << std::endl;
 		}
 
 		HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, DEFAULT_ALPHABET_SZ);
@@ -1709,6 +1772,10 @@ void GenerateDeflateBlock(BitStream& stream, u32* bytes, size_t len, const size_
 
 		std::cout << "tree :D" << std::endl;
 		PrintTree(tree);
+
+		std::cout << "---------------------------" << std::endl;
+		
+		PrintTree(lzr->distTree);
 
 		u32* treeCodeLengths = getTreeBitLens(tree, DEFAULT_ALPHABET_SZ);
 		u32* distCodeLengths = getTreeBitLens(lzr->distTree, DEFAULT_ALPHABET_SZ);
@@ -1951,8 +2018,8 @@ void Huffman::DebugMain() {
 	//std::cout << "Test Result 2: " << testRes2.bytes << std::endl;
 
 	//string search testing
-	char testBuf[] = "This is some test text that will be deflate then reinflate. ABABAB    ABABABAB <- test backreference";
-	//std::vector<i32> searchRes = searchBuffer(testBuff, 68, (char*)"search", 6, INT_MAX, 256);
+	char testBuf[] = "This is some test text that will be deflate then reinflate. ABABAB ABABABAB       <- test backreference";
+	//std::vector<i32> searchRes = searchBuffer(testBuff, 68, (char*)"search", 6, INT_MAX,256);
 
 	//for (const auto& v : searchRes)
 		//std::cout << "Search Res: " << v << std::endl; 
@@ -1993,7 +2060,7 @@ void Huffman::DebugMain() {
 	//test compression
 
 
-	ZResult test = Zlib::Deflate(uTestStr, len, 15, 2);
+	ZResult test = Zlib::Deflate(uTestStr, len, 15, 1);
 
 	std::cout << "Compression Done!" << std::endl;
 

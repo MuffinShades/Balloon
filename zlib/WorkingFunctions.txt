@@ -1,0 +1,10 @@
+Huffman Tree Creation functions -> CovnertTreeToCanonical, GenerateBaseTree, getTreeBitLens
+
+
+Broken Functions
+lz77 encode
+
+Working Deflate stuff:
+
+*headers
+*getting tree bit lengths
