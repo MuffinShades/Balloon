@@ -23,11 +23,15 @@ My brain :)
 #define HUFFMAN_RESULT_DECODE 0x03
 
 //types
-#define u32 unsigned int
-#define i32 int
-#define u8 unsigned char
-#define i8 char
-#define byte unsigned char
+typedef long i64;
+typedef unsigned long u64;
+typedef unsigned int u32;
+typedef int i32;
+typedef unsigned short u16;
+typedef short i64;
+typedef unsigned char u8;
+typedef char i8;
+typedef unsigned char byte;
 
 //huffman tree node
 struct HuffmanTreeNode {
@@ -39,14 +43,10 @@ struct HuffmanTreeNode {
 	i32 depth = 0;
 	u32* symCodes;
 	size_t alphabetSz;
-	~HuffmanTreeNode() {
-		//delete[] this->left;
-		//delete[] this->right;
-	}
 };
 
 //character count
-struct CharCount {
+/*struct CharCount {
 	i32 count = 0;
 	u32 val = NULL;
 	operator HuffmanTreeNode() { //conversion
@@ -55,7 +55,7 @@ struct CharCount {
 		res.count = this->count;
 		return res;
 	};
-};
+};*/
 
 //byte pointer with length
 struct RawBytes {
@@ -69,12 +69,10 @@ struct RawBytes {
 
 //result from huffman decode and encode
 struct HuffmanResult {
-	u32* bytes = nullptr;
-	std::vector<CharCount> charCount;
+	byte* bytes = nullptr;
 	i32 nChars = 0;
 	size_t len = 0;
 	i32 bitLen = 0;
-	float compressionRatio = 0.0f;
 	i32 bitOverflow = 0;
 	i32 resultType = HUFFMAN_PENDING;
 };
@@ -112,29 +110,42 @@ public:
 	i32 tellw();
 	//remove unused bytes
 	void clip();
-
+	//allocation function
 	void calloc(size_t sz);
 };
 
 class Huffman {
 public:
 	static void DebugMain();
-	static HuffmanResult Encode(u32* bytes, size_t len);
-	static HuffmanResult Decode(u32* bytes, size_t len);
+	static HuffmanResult Encode(char* bytes, size_t len);
+	static HuffmanResult Decode(char* bytes, size_t len);
 };
 
-struct ZResult {
+class lz77 {
+
+};
+
+class ZResult {
+public:
 	u32* bytes;
 	size_t len;
 	i32 compressionLevel, compressionMode;
 	u32 checkSum;
+	ZResult() {};
 };
 
+/*
+
+Zlib class for the zlib stuff
+
+Deflate levels are 0, 1, or 2 with 0 being no compression,
+1 being just huffman, and 2 being both huffman and lz77
+
+Note ill add the level 0-10 sysetm later
+
+*/
 class Zlib {
 public:
 	static ZResult *Inflate(u32* bytes, size_t len);
 	static ZResult Deflate(u32* bytes, size_t len, const size_t winBits, const int level);
 };
-
-
-//TODO check lz77 generated stream to rid it of bytes like 32, 6, 2, and 1
