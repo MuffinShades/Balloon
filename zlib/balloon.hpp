@@ -86,7 +86,7 @@ public:
 	i32 pos = 0, rPos = 0;
 	i32 lBit = 0;
 	u32 cByte = 0;
-	u32 rBit = 8;
+	u32 rBit = 0;
 	size_t sz, bsz, asz;
 	//bit stream for reading existing bytes / bits
 	BitStream(u32* bytes, size_t len);
@@ -132,7 +132,7 @@ struct ZResult {
 
 class Zlib {
 public:
-	static ZResult Inflate(u32* bytes, size_t len);
+	static ZResult *Inflate(u32* bytes, size_t len);
 	static ZResult Deflate(u32* bytes, size_t len, const size_t winBits, const int level);
 };
 
