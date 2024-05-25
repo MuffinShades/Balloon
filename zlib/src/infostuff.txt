@@ -1,0 +1,27 @@
+info about decoding / encoding trees
+
+
+Header:
+
+5 bits -> number of tree codes - 257
+5 bits -> numner of distance codes - 1
+4 bits -> number of codes in codelength tree - 4
+
+Info for code length tree:
+
+19 values in code length alphabet
+
+0-15 -> code length values
+16 -> repeat last code length 3 - 6 times
+    2 bits + 3
+17 -> repeast 0 3-10 times
+    3 bits + 3
+18 -> repeat 0 11-138 times
+    7 bits + 11
+
+Code Length Tree Encoding:
+
+3 bits * nCodesInTree -> tree data
+
+Encode next to trees with the above tree starting with the main tree and then the distance tree
+    * for the distnace if there are no distances just create a 1 node tree to replace it's spot incase having no tree causes errors somewhere
