@@ -68,13 +68,14 @@ struct RawBytes {
 };
 
 //result from huffman decode and encode
-struct HuffmanResult {
+class HuffmanResult {
+public:
+	HuffmanTreeNode* tree;
 	byte* bytes = nullptr;
 	i32 nChars = 0;
 	size_t len = 0;
-	i32 bitLen = 0;
-	i32 bitOverflow = 0;
 	i32 resultType = HUFFMAN_PENDING;
+	~HuffmanResult();
 };
 
 //bit stream class for reading and doing stuff with bits
@@ -117,8 +118,8 @@ public:
 class Huffman {
 public:
 	static void DebugMain();
-	static HuffmanResult Encode(char* bytes, size_t len);
-	static HuffmanResult Decode(char* bytes, size_t len);
+	static HuffmanResult Encode(char* bytes, size_t len, bool encodeTree = true);
+	static HuffmanResult Decode(char* bytes, size_t len, bool useTree = true, HuffmanTreeNode *tree = nullptr);
 };
 
 class lz77 {

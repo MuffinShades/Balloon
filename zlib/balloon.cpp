@@ -2043,7 +2043,7 @@ void Huffman::DebugMain() {}
 #endif
 
 //huffman functions
-HuffmanResult Huffman::Encode(char* bytes, size_t len) {
+HuffmanResult Huffman::Encode(char* bytes, size_t len, bool encodeTree) {
 	HuffmanResult res;
 
 	if (bytes == nullptr || len <= 0)
@@ -2059,5 +2059,81 @@ HuffmanResult Huffman::Encode(char* bytes, size_t len) {
 	u32* charCounts = GetCharCount(uBytes, len, alphabetSz);
 
 	HuffmanTreeNode* baseTree = GenerateBaseTree(charCounts, alphabetSz);
+	HuffmanTreeNode* tree = CovnertTreeToCanonical(baseTree, alphabetSz);
+	FreeTree(baseTree);
 
+	BitStream stream = BitStream(0xff);
+
+	if (encodeTree)
+		writeTrees(stream, tree, nullptr);
+
+	//encode data
+	u32* bEnd = uBytes + len;
+
+	u32* bitLens = getTreeBitLens(tree, alphabetSz);
+
+	do {
+		WriteVBitsToStream(
+			stream,
+			bitReverse(EncodeSymbol(
+				*uBytes,
+				tree
+			),bitLens[*uBytes]),
+			bitLens[*uBytes]
+		);
+	} while (++uBytes <= bEnd);
+
+	stream.clip();
+
+	//generate result
+	res.len = stream.sz;
+	res.tree = tree;
+	res.bytes = new byte[res.len];
+	
+	for (size_t i = 0; i < stream.sz; i++)
+		res.bytes[i] = (byte)stream.bytes[i];
+
+	res.resultType = HUFFMAN_RESULT_ENCODE;
+
+	return res;
+};
+
+HuffmanResult Huffman::Decode(char* bytes, size_t sz, bool useTree = false, HuffmanTreeNode* tree) {
+	HuffmanResult res;
+	HuffmanTreeNode* decodeTree;
+	BitStream stream = BitStream(sz);
+	HuffmanTreeNode** trees = nullptr;
+
+	//get the decode tree
+	for (i32 i = 0; i < sz; i++)
+		stream.bytes[i] = bytes[i];
+
+	if (!useTree) {
+		trees = decodeTrees(stream);
+		decodeTree = trees[0];
+		FreeTree(trees[1]);
+	}
+	else
+		decodeTree = tree;
+
+	if (decodeTree == nullptr)
+		return res;
+
+	//now decode data
+
+
+	//memory management
+	FreeTree(decodeTree);
+	if (trees != nullptr)
+		delete[] trees;
+
+	return res;
+}
+
+HuffmanResult::~HuffmanResult() {
+	if (this->tree != nullptr)
+		FreeTree(this->tree);
+
+	if (this->bytes != nullptr)
+		delete[] this->bytes;
 }
